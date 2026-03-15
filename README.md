@@ -1,8 +1,8 @@
-# FastPDF
+# FerroPDF
 
 **High-performance PDF generation from HTML, CSS, and Tailwind templates.**
 
-FastPDF is a Rust-powered PDF rendering engine with a clean Python API. Complex reports render in under 6ms.
+FerroPDF is a Rust-powered PDF rendering engine with a clean Python API. Complex reports render in under 6ms.
 
 ## Features
 
@@ -41,7 +41,7 @@ options = RenderOptions(
     page_size="A4",
     margin_top=20.0,
     title="My Document",
-    author="FastPDF",
+    author="FerroPDF",
 )
 pdf_bytes = render_pdf(html, options=options)
 ```
@@ -152,7 +152,7 @@ MIDDLEWARE = [
 ]
 
 # settings.py (optional)
-FASTPDF = {
+FERROPDF = {
     "DEFAULT_PAGE_SIZE": "A4",
     "DEFAULT_MARGIN": 15.0,
     "TAILWIND": True,
@@ -354,7 +354,7 @@ pytest tests/python/
 ### Project Structure
 
 ```
-fastpdf/
+ferropdf/
 ├── rust-engine/           # Rust core engine
 │   ├── Cargo.toml
 │   └── src/

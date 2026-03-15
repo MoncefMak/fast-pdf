@@ -1,6 +1,12 @@
 //! Pagination — splitting a layout tree into pages for PDF output.
 
-use super::box_model::LayoutBox;
+use once_cell::sync::Lazy;
+use super::box_model::{LayoutBox, LayoutBoxType, Rect};
+use crate::css::properties::ComputedStyle;
+
+/// Strip HTML tags for plain-text header/footer rendering.
+static RE_TAGS: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"<[^>]+>").expect("static regex"));
 
 /// Standard page sizes in CSS pixels (at 96 DPI).
 #[derive(Debug, Clone, Copy)]
@@ -131,6 +137,10 @@ pub struct Page {
     pub number: usize,
     pub layout: PageLayout,
     pub content: Vec<LayoutBox>,
+    /// Rendered header box for this page (filled after pagination).
+    pub header_content: Option<LayoutBox>,
+    /// Rendered footer box for this page (filled after pagination).
+    pub footer_content: Option<LayoutBox>,
 }
 
 impl Page {
@@ -139,6 +149,8 @@ impl Page {
             number,
             layout,
             content: Vec::new(),
+            header_content: None,
+            footer_content: None,
         }
     }
 }
@@ -179,7 +191,70 @@ impl Paginator {
             page.number = i + 1;
         }
 
+        let total_pages = pages.len();
+
+        // Inject header and footer boxes with page numbers substituted
+        for page in pages.iter_mut() {
+            if let Some(ref tmpl) = self.page_layout.header_html.clone() {
+                let rendered = tmpl
+                    .replace("{{page_number}}", &page.number.to_string())
+                    .replace("{{total_pages}}", &total_pages.to_string());
+                page.header_content = Some(self.create_header_footer_box(
+                    &rendered,
+                    self.page_layout.margin_left,
+                    self.page_layout.margin_top - self.page_layout.header_height,
+                    self.page_layout.content_width(),
+                    self.page_layout.header_height,
+                ));
+            }
+            if let Some(ref tmpl) = self.page_layout.footer_html.clone() {
+                let rendered = tmpl
+                    .replace("{{page_number}}", &page.number.to_string())
+                    .replace("{{total_pages}}", &total_pages.to_string());
+                let footer_y = self.page_layout.size.height - self.page_layout.margin_bottom;
+                page.footer_content = Some(self.create_header_footer_box(
+                    &rendered,
+                    self.page_layout.margin_left,
+                    footer_y,
+                    self.page_layout.content_width(),
+                    self.page_layout.footer_height,
+                ));
+            }
+        }
+
         pages
+    }
+
+    /// Create a simple layout box for header/footer content.
+    fn create_header_footer_box(
+        &self,
+        html: &str,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> LayoutBox {
+
+        let mut container = LayoutBox::new(LayoutBoxType::Block, ComputedStyle::default_root());
+        container.dimensions.content = Rect { x, y, width, height };
+
+        // Strip basic HTML tags to get text content
+        let text = html
+            .replace("<div>", "").replace("</div>", "")
+            .replace("<span>", "").replace("</span>", "")
+            .replace("<p>", "").replace("</p>", "")
+            .replace("<header>", "").replace("</header>", "")
+            .replace("<footer>", "").replace("</footer>", "");
+        // Remove any remaining HTML tags
+        let text = RE_TAGS.replace_all(&text, "").trim().to_string();
+
+        if !text.is_empty() {
+            let mut text_box = LayoutBox::text_box(text, ComputedStyle::default_root());
+            text_box.dimensions.content = Rect { x: 0.0, y: 0.0, width, height };
+            container.children.push(text_box);
+        }
+
+        container
     }
 
     fn split_into_pages(

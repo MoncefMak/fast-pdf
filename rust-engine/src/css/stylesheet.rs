@@ -1,5 +1,7 @@
 //! CSS stylesheet representation.
 
+use std::collections::HashMap;
+
 use super::properties::CssProperty;
 use super::selector::Selector;
 use super::values::CssValue;
@@ -100,6 +102,9 @@ pub struct Stylesheet {
     pub page_rules: Vec<PageRule>,
     /// @font-face rules.
     pub font_face_rules: Vec<FontFaceRule>,
+    /// Custom CSS properties (CSS variables) declared at :root or global scope.
+    /// Key includes the `--` prefix, value is the raw string.
+    pub custom_properties: HashMap<String, String>,
 }
 
 /// A @font-face rule.
@@ -117,6 +122,7 @@ impl Stylesheet {
             rules: Vec::new(),
             page_rules: Vec::new(),
             font_face_rules: Vec::new(),
+            custom_properties: HashMap::new(),
         }
     }
 
@@ -125,6 +131,7 @@ impl Stylesheet {
         self.rules.extend(other.rules);
         self.page_rules.extend(other.page_rules);
         self.font_face_rules.extend(other.font_face_rules);
+        self.custom_properties.extend(other.custom_properties);
     }
 
     /// Get the total number of rules.

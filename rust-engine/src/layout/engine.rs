@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use unicode_bidi::BidiInfo;
+
 use crate::css::properties::{ComputedStyle, CssProperty};
 use crate::css::stylesheet::{Stylesheet, default_stylesheet};
 use crate::css::values::CssValue;
@@ -16,6 +18,15 @@ use super::box_model::{EdgeSizes, LayoutBox, LayoutBoxType};
 use super::pagination::{Page, PageLayout, Paginator};
 use super::style_resolver::StyleResolver;
 use super::table_layout;
+
+/// Detect whether a text string is predominantly RTL using Unicode Bidi algorithm.
+fn is_text_rtl(text: &str) -> bool {
+    let bidi = BidiInfo::new(text, None);
+    bidi.paragraphs
+        .first()
+        .map(|p| p.level.is_rtl())
+        .unwrap_or(false)
+}
 
 /// The layout engine that computes positions and sizes for all elements.
 pub struct LayoutEngine {
@@ -72,7 +83,7 @@ impl LayoutEngine {
 
         // Build layout tree
         let root_style = ComputedStyle::default_root();
-        let mut root = self.build_layout_tree(body, &root_style, &resolver, &[], &[])?;
+        let mut root = self.build_layout_tree(body, &root_style, &resolver, &[], &[], &[])?;
 
         // Compute dimensions
         let container_width = self.page_layout.content_width();
@@ -93,6 +104,7 @@ impl LayoutEngine {
         resolver: &StyleResolver,
         ancestors: &[&ElementData],
         siblings: &[&ElementData],
+        following_siblings: &[&ElementData],
     ) -> Result<LayoutBox> {
         match &node.node_type {
             NodeType::Text(text) => {
@@ -116,7 +128,7 @@ impl LayoutEngine {
             }
             NodeType::Element(data) => {
                 // Compute style
-                let mut style = resolver.compute_style(data, parent_style, ancestors, siblings);
+                let mut style = resolver.compute_style(data, parent_style, ancestors, siblings, following_siblings);
                 StyleResolver::apply_tag_defaults(&data.tag_name, &mut style);
 
                 // Check if hidden
@@ -153,21 +165,35 @@ impl LayoutEngine {
                 let mut child_ancestors = ancestors.to_vec();
                 child_ancestors.push(data);
 
+                // Pre-collect element children so we can compute following siblings
+                let element_children: Vec<&ElementData> = node.children.iter()
+                    .filter_map(|c| if let NodeType::Element(d) = &c.node_type { Some(d) } else { None })
+                    .collect();
+
                 let mut prev_siblings: Vec<&ElementData> = Vec::new();
 
-                for child in &node.children {
+                for (node_idx, child) in node.children.iter().enumerate() {
+                    // Compute following element-siblings for this child
+                    let following: Vec<&ElementData> = node.children[node_idx + 1..].iter()
+                        .filter_map(|c| if let NodeType::Element(d) = &c.node_type { Some(d) } else { None })
+                        .collect();
+
                     let child_box = self.build_layout_tree(
                         child,
                         &style,
                         resolver,
                         &child_ancestors,
                         &prev_siblings,
+                        &following,
                     )?;
 
                     // Track element siblings for selector matching
                     if let NodeType::Element(child_data) = &child.node_type {
                         prev_siblings.push(child_data);
                     }
+
+                    // Suppress unused variable warning
+                    let _ = &element_children;
 
                     layout_box.children.push(child_box);
                 }
@@ -177,13 +203,17 @@ impl LayoutEngine {
             NodeType::Comment(_) | NodeType::Document => {
                 // Process children of document nodes
                 let mut layout_box = LayoutBox::new(LayoutBoxType::Block, parent_style.clone());
-                for child in &node.children {
+                for (node_idx, child) in node.children.iter().enumerate() {
+                    let following: Vec<&ElementData> = node.children[node_idx + 1..].iter()
+                        .filter_map(|c| if let NodeType::Element(d) = &c.node_type { Some(d) } else { None })
+                        .collect();
                     let child_box = self.build_layout_tree(
                         child,
                         parent_style,
                         resolver,
                         ancestors,
                         siblings,
+                        &following,
                     )?;
                     layout_box.children.push(child_box);
                 }
@@ -243,6 +273,46 @@ impl LayoutEngine {
                 self.layout_block(layout_box, container_width, font_size);
             }
         }
+
+        // S3-3: Apply min/max size constraints after layout
+        self.apply_size_constraints(layout_box, container_width, font_size);
+
+        // S3-4: Apply position: relative offset (visual-only, stays in flow)
+        if layout_box
+            .style
+            .get(&CssProperty::Position)
+            .map(|v| matches!(v, CssValue::Keyword(s) if s == "relative"))
+            .unwrap_or(false)
+        {
+            if let Some(top) = layout_box
+                .style
+                .get(&CssProperty::Top)
+                .and_then(|v| v.as_px(0.0, font_size, self.root_font_size))
+            {
+                layout_box.dimensions.content.y += top;
+            }
+            if let Some(left) = layout_box
+                .style
+                .get(&CssProperty::Left)
+                .and_then(|v| v.as_px(container_width, font_size, self.root_font_size))
+            {
+                layout_box.dimensions.content.x += left;
+            }
+            if let Some(right) = layout_box
+                .style
+                .get(&CssProperty::Right)
+                .and_then(|v| v.as_px(container_width, font_size, self.root_font_size))
+            {
+                layout_box.dimensions.content.x -= right;
+            }
+            if let Some(bottom) = layout_box
+                .style
+                .get(&CssProperty::Bottom)
+                .and_then(|v| v.as_px(0.0, font_size, self.root_font_size))
+            {
+                layout_box.dimensions.content.y -= bottom;
+            }
+        }
     }
 
     /// Compute margins, padding, and border from the computed style.
@@ -282,8 +352,7 @@ impl LayoutEngine {
         let explicit_width = layout_box
             .style
             .get(&CssProperty::Width)
-            .and_then(|v| v.as_length())
-            .map(|l| l.to_px(container_width, font_size, self.root_font_size));
+            .and_then(|v| v.as_px(container_width, font_size, self.root_font_size));
 
         let content_width = explicit_width.unwrap_or(
             container_width
@@ -326,8 +395,7 @@ impl LayoutEngine {
         let explicit_height = layout_box
             .style
             .get(&CssProperty::Height)
-            .and_then(|v| v.as_length())
-            .map(|l| l.to_px(0.0, font_size, self.root_font_size));
+            .and_then(|v| v.as_px(0.0, font_size, self.root_font_size));
 
         layout_box.dimensions.content.height = explicit_height.unwrap_or(y);
     }
@@ -494,10 +562,19 @@ impl LayoutEngine {
         }
 
         // For RTL direction, mirror item positions within each line.
-        // Items are placed left-to-right during the loop above; mirroring
-        // reverses the visual order so the first logical word ends up on the
-        // right and the last on the left — the correct RTL visual order.
-        let is_rtl = layout_box.style.is_rtl();
+        // Detect RTL from explicit CSS `direction: rtl` or auto-detect from
+        // text content using the Unicode Bidirectional Algorithm.
+        let is_rtl = if layout_box.style.is_rtl() {
+            true
+        } else {
+            // Auto-detect: collect all text content and check Unicode bidi
+            let combined_text: String = new_children
+                .iter()
+                .filter_map(|c| c.text.as_deref())
+                .collect::<Vec<_>>()
+                .join(" ");
+            !combined_text.is_empty() && is_text_rtl(&combined_text)
+        };
         if is_rtl {
             for &(start, end, line_width, _) in &line_infos {
                 for i in start..end {
@@ -636,8 +713,7 @@ impl LayoutEngine {
         let explicit_width = layout_box
             .style
             .get(&CssProperty::Width)
-            .and_then(|v| v.as_length())
-            .map(|l| l.to_px(container_width, font_size, self.root_font_size));
+            .and_then(|v| v.as_px(container_width, font_size, self.root_font_size));
 
         let content_width = explicit_width.unwrap_or(
             container_width
@@ -713,45 +789,101 @@ impl LayoutEngine {
             }
             _ => {
                 // Horizontal flex layout (row)
-                let total_flex_grow: f64 = layout_box
+
+                // === STEP 1: Apply flex-basis to override natural sizes ===
+                for child in layout_box.children.iter_mut() {
+                    let basis = child.style.get(&CssProperty::FlexBasis).and_then(|v| match v {
+                        CssValue::Length(l) => {
+                            Some(l.to_px(content_width, font_size, self.root_font_size))
+                        }
+                        CssValue::Calc(expr) => {
+                            Some(expr.to_px(content_width, font_size, self.root_font_size))
+                        }
+                        CssValue::Auto | CssValue::Keyword(_) => None,
+                        _ => None,
+                    });
+                    if let Some(b) = basis {
+                        child.dimensions.content.width = (b
+                            - child.dimensions.padding.horizontal()
+                            - child.dimensions.border.horizontal())
+                        .max(0.0);
+                    }
+                }
+
+                // === STEP 2: Compute free space ===
+                let num_children = layout_box.children.len();
+                let total_gap = gap * num_children.saturating_sub(1) as f64;
+                let total_base_width: f64 = layout_box
                     .children
                     .iter()
-                    .map(|c| {
-                        c.style
-                            .get(&CssProperty::FlexGrow)
-                            .and_then(|v| match v {
-                                CssValue::Number(n) => Some(*n),
-                                _ => None,
-                            })
-                            .unwrap_or(0.0)
-                    })
+                    .map(|c| c.dimensions.margin_box().width)
                     .sum();
+                let free_space = content_width - total_base_width - total_gap;
 
+                if free_space >= 0.0 {
+                    // === STEP 3a: Distribute free space via flex-grow ===
+                    let total_grow: f64 = layout_box
+                        .children
+                        .iter()
+                        .map(|c| {
+                            c.style
+                                .get(&CssProperty::FlexGrow)
+                                .and_then(|v| if let CssValue::Number(n) = v { Some(*n) } else { None })
+                                .unwrap_or(0.0)
+                        })
+                        .sum();
+                    if total_grow > 0.0 {
+                        for child in layout_box.children.iter_mut() {
+                            let grow = child
+                                .style
+                                .get(&CssProperty::FlexGrow)
+                                .and_then(|v| if let CssValue::Number(n) = v { Some(*n) } else { None })
+                                .unwrap_or(0.0);
+                            child.dimensions.content.width += free_space * (grow / total_grow);
+                        }
+                    }
+                } else {
+                    // === STEP 3b: Reduce via flex-shrink ===
+                    let overflow = -free_space;
+                    let total_shrink_factor: f64 = layout_box
+                        .children
+                        .iter()
+                        .map(|c| {
+                            let shrink = c
+                                .style
+                                .get(&CssProperty::FlexShrink)
+                                .and_then(|v| if let CssValue::Number(n) = v { Some(*n) } else { None })
+                                .unwrap_or(1.0);
+                            let basis = c.dimensions.content.width
+                                + c.dimensions.padding.horizontal()
+                                + c.dimensions.border.horizontal();
+                            shrink * basis
+                        })
+                        .sum();
+                    if total_shrink_factor > 0.0 {
+                        for child in layout_box.children.iter_mut() {
+                            let shrink = child
+                                .style
+                                .get(&CssProperty::FlexShrink)
+                                .and_then(|v| if let CssValue::Number(n) = v { Some(*n) } else { None })
+                                .unwrap_or(1.0);
+                            let basis = child.dimensions.content.width
+                                + child.dimensions.padding.horizontal()
+                                + child.dimensions.border.horizontal();
+                            let reduction = overflow * (shrink * basis / total_shrink_factor);
+                            child.dimensions.content.width =
+                                (child.dimensions.content.width - reduction).max(0.0);
+                        }
+                    }
+                }
+
+                // Recompute remaining space for justify-content (after grow/shrink)
                 let total_child_width: f64 = layout_box
                     .children
                     .iter()
                     .map(|c| c.dimensions.margin_box().width)
                     .sum();
-
-                let num_children = layout_box.children.len();
-                let total_gap = gap * num_children.saturating_sub(1) as f64;
                 let remaining_space = (content_width - total_child_width - total_gap).max(0.0);
-
-                // Apply flex-grow first
-                if total_flex_grow > 0.0 {
-                    for child in layout_box.children.iter_mut() {
-                        let grow = child
-                            .style
-                            .get(&CssProperty::FlexGrow)
-                            .and_then(|v| match v {
-                                CssValue::Number(n) => Some(*n),
-                                _ => None,
-                            })
-                            .unwrap_or(0.0);
-                        let extra = remaining_space * (grow / total_flex_grow);
-                        child.dimensions.content.width += extra;
-                    }
-                }
 
                 // Handle flex-wrap: wrap — split children into rows
                 let wrapping = flex_wrap == "wrap" || flex_wrap == "wrap-reverse";
@@ -785,7 +917,6 @@ impl LayoutEngine {
                         let row_gap = gap * row.len().saturating_sub(1) as f64;
                         let row_remaining = (content_width - row_total_width - row_gap).max(0.0);
 
-                        // Apply justify for this row
                         let (initial_x, inter_item_space) = compute_justify(
                             &justify_content, row_remaining, row.len(), gap
                         );
@@ -835,8 +966,99 @@ impl LayoutEngine {
                     }
 
                     layout_box.dimensions.content.height = max_height;
+
+                    // === STEP 4: Apply align-items on cross axis ===
+                    let align_items = layout_box
+                        .style
+                        .get(&CssProperty::AlignItems)
+                        .and_then(|v| if let CssValue::Keyword(s) = v { Some(s.as_str()) } else { None })
+                        .unwrap_or("stretch");
+
+                    let line_height = layout_box
+                        .children
+                        .iter()
+                        .map(|c| c.dimensions.margin_box().height)
+                        .fold(0.0_f64, f64::max);
+
+                    for child in layout_box.children.iter_mut() {
+                        let effective_align = child
+                            .style
+                            .get(&CssProperty::AlignSelf)
+                            .and_then(|v| if let CssValue::Keyword(s) = v { Some(s.clone()) } else { None })
+                            .filter(|s| s != "auto" && !s.is_empty())
+                            .unwrap_or_else(|| align_items.to_string());
+
+                        let child_height = child.dimensions.margin_box().height;
+                        let y_offset = match effective_align.as_str() {
+                            "flex-start" | "start" | "self-start" => 0.0,
+                            "flex-end" | "end" | "self-end" => line_height - child_height,
+                            "center" => (line_height - child_height) / 2.0,
+                            "stretch" => {
+                                if child
+                                    .style
+                                    .get(&CssProperty::Height)
+                                    .map(|v| matches!(v, CssValue::Auto))
+                                    .unwrap_or(true)
+                                {
+                                    child.dimensions.content.height = (line_height
+                                        - child.dimensions.margin.vertical()
+                                        - child.dimensions.padding.vertical()
+                                        - child.dimensions.border.vertical())
+                                    .max(0.0);
+                                }
+                                0.0
+                            }
+                            _ => 0.0,
+                        };
+                        child.dimensions.content.y += y_offset;
+                    }
                 }
             }
+        }
+    }
+
+    /// Apply min/max size constraints after layout.
+    fn apply_size_constraints(
+        &self,
+        layout_box: &mut LayoutBox,
+        container_width: f64,
+        font_size: f64,
+    ) {
+        let w = layout_box.dimensions.content.width;
+        let h = layout_box.dimensions.content.height;
+
+        if let Some(min_w) = layout_box
+            .style
+            .get(&CssProperty::MinWidth)
+            .and_then(|v| v.as_px(container_width, font_size, self.root_font_size))
+        {
+            layout_box.dimensions.content.width = w.max(min_w);
+        }
+
+        if let Some(max_w) = layout_box
+            .style
+            .get(&CssProperty::MaxWidth)
+            .and_then(|v| v.as_px(container_width, font_size, self.root_font_size))
+        {
+            layout_box.dimensions.content.width =
+                layout_box.dimensions.content.width.min(max_w);
+        }
+
+        if let Some(min_h) = layout_box
+            .style
+            .get(&CssProperty::MinHeight)
+            .and_then(|v| v.as_px(0.0, font_size, self.root_font_size))
+        {
+            layout_box.dimensions.content.height = h.max(min_h);
+        }
+
+        if let Some(max_h) = layout_box
+            .style
+            .get(&CssProperty::MaxHeight)
+            .and_then(|v| v.as_px(0.0, font_size, self.root_font_size))
+        {
+            layout_box.dimensions.content.height =
+                layout_box.dimensions.content.height.min(max_h);
         }
     }
 
@@ -845,8 +1067,7 @@ impl LayoutEngine {
         let width = layout_box
             .style
             .get(&CssProperty::Width)
-            .and_then(|v| v.as_length())
-            .map(|l| l.to_px(container_width, font_size, self.root_font_size))
+            .and_then(|v| v.as_px(container_width, font_size, self.root_font_size))
             .or_else(|| {
                 layout_box
                     .attributes
@@ -858,8 +1079,7 @@ impl LayoutEngine {
         let height = layout_box
             .style
             .get(&CssProperty::Height)
-            .and_then(|v| v.as_length())
-            .map(|l| l.to_px(0.0, font_size, self.root_font_size))
+            .and_then(|v| v.as_px(0.0, font_size, self.root_font_size))
             .or_else(|| {
                 layout_box
                     .attributes
@@ -1018,5 +1238,39 @@ mod tests {
         let pages = engine.layout(&dom, &[]).unwrap();
 
         assert!(pages.len() >= 1);
+    }
+
+    #[test]
+    fn test_flex_align_items_center() {
+        let html = r#"<div style="display:flex;align-items:center;height:100px">
+            <span style="height:20px">A</span>
+            <span style="height:40px">B</span>
+        </div>"#;
+        let dom = HtmlParser::parse(html).unwrap();
+        let engine = LayoutEngine::new(PageLayout::default());
+        let pages = engine.layout(&dom, &[]).unwrap();
+        assert!(!pages.is_empty());
+    }
+
+    #[test]
+    fn test_min_width_constraint() {
+        let html = r#"<div style="min-width:200px;width:50px">content</div>"#;
+        let dom = HtmlParser::parse(html).unwrap();
+        let engine = LayoutEngine::new(PageLayout::default());
+        let pages = engine.layout(&dom, &[]).unwrap();
+        assert!(!pages.is_empty());
+    }
+
+    #[test]
+    fn test_flex_shrink_no_overflow() {
+        let html = r#"<div style="display:flex;width:200px">
+            <div style="flex-shrink:1">Item 1</div>
+            <div style="flex-shrink:1">Item 2</div>
+            <div style="flex-shrink:1">Item 3</div>
+        </div>"#;
+        let dom = HtmlParser::parse(html).unwrap();
+        let engine = LayoutEngine::new(PageLayout::default());
+        let pages = engine.layout(&dom, &[]).unwrap();
+        assert!(!pages.is_empty());
     }
 }

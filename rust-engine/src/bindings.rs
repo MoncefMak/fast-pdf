@@ -140,6 +140,21 @@ impl RenderOptions {
     }
 }
 
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self::new(
+            "a4".to_string(),
+            vec![20.0, 15.0, 20.0, 15.0],
+            String::new(),
+            String::new(),
+            false,
+            String::new(),
+            String::new(),
+            String::new(),
+        )
+    }
+}
+
 /// The main PDF engine class exposed to Python.
 #[pyclass]
 pub struct PdfEngine {
@@ -212,24 +227,18 @@ impl PdfEngine {
         options: Option<&RenderOptions>,
     ) -> PyResult<Vec<Bound<'py, PyBytes>>> {
         let font_cache = self.font_cache.clone();
-        // Use rayon for parallel rendering
-        let results: Vec<Result<Vec<u8>, FastPdfError>> = documents
-            .par_iter()
-            .map(|(html, css)| {
-                let default_opts = RenderOptions::new(
-                    "a4".to_string(),
-                    vec![20.0, 15.0, 20.0, 15.0],
-                    String::new(),
-                    String::new(),
-                    false,
-                    String::new(),
-                    String::new(),
-                    String::new(),
-                );
-                let opts = options.unwrap_or(&default_opts);
-                render_pipeline(html, css, opts, Some(font_cache.clone()))
-            })
-            .collect();
+        // Clone options before releasing the GIL (Python refs can't cross thread boundaries)
+        let opts_owned: RenderOptions = options
+            .map(|o| o.clone())
+            .unwrap_or_default();
+
+        // Release the GIL during the entire Rayon parallel workload
+        let results: Vec<Result<Vec<u8>, FastPdfError>> = py.allow_threads(|| {
+            documents
+                .par_iter()
+                .map(|(html, css)| render_pipeline(html, css, &opts_owned, Some(font_cache.clone())))
+                .collect()
+        });
 
         results
             .into_iter()
@@ -248,16 +257,7 @@ impl PdfEngine {
         css: &str,
         options: Option<&RenderOptions>,
     ) -> PyResult<Vec<u8>> {
-        let default_opts = RenderOptions::new(
-            "a4".to_string(),
-            vec![20.0, 15.0, 20.0, 15.0],
-            String::new(),
-            String::new(),
-            false,
-            String::new(),
-            String::new(),
-            String::new(),
-        );
+        let default_opts = RenderOptions::default();
         let opts = options.unwrap_or(&default_opts);
 
         render_pipeline(html, css, opts, Some(self.font_cache.clone()))
@@ -364,16 +364,7 @@ pub fn render_html_to_pdf(
     css: Option<&str>,
     options: Option<&RenderOptions>,
 ) -> PyResult<()> {
-    let default_opts = RenderOptions::new(
-        "a4".to_string(),
-        vec![20.0, 15.0, 20.0, 15.0],
-        String::new(),
-        String::new(),
-        false,
-        String::new(),
-        String::new(),
-        String::new(),
-    );
+    let default_opts = RenderOptions::default();
     let opts = options.unwrap_or(&default_opts);
 
     let bytes = render_pipeline(html, css.unwrap_or(""), opts, None)
@@ -392,16 +383,7 @@ pub fn render_html_to_pdf_bytes<'py>(
     css: Option<&str>,
     options: Option<&RenderOptions>,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let default_opts = RenderOptions::new(
-        "a4".to_string(),
-        vec![20.0, 15.0, 20.0, 15.0],
-        String::new(),
-        String::new(),
-        false,
-        String::new(),
-        String::new(),
-        String::new(),
-    );
+    let default_opts = RenderOptions::default();
     let opts = options.unwrap_or(&default_opts);
 
     let bytes = render_pipeline(html, css.unwrap_or(""), opts, None)
@@ -418,22 +400,18 @@ pub fn batch_render<'py>(
     documents: Vec<(String, String)>,
     options: Option<&RenderOptions>,
 ) -> PyResult<Vec<Bound<'py, PyBytes>>> {
-    let default_opts = RenderOptions::new(
-        "a4".to_string(),
-        vec![20.0, 15.0, 20.0, 15.0],
-        String::new(),
-        String::new(),
-        false,
-        String::new(),
-        String::new(),
-        String::new(),
-    );
-    let opts = options.unwrap_or(&default_opts);
+    // Clone options before releasing the GIL (Python refs can't cross thread boundaries)
+    let opts_owned: RenderOptions = options
+        .map(|o| o.clone())
+        .unwrap_or_default();
 
-    let results: Vec<Result<Vec<u8>, FastPdfError>> = documents
-        .par_iter()
-        .map(|(html, css)| render_pipeline(html, css, opts, None))
-        .collect();
+    // Release the GIL during the entire Rayon parallel workload
+    let results: Vec<Result<Vec<u8>, FastPdfError>> = py.allow_threads(|| {
+        documents
+            .par_iter()
+            .map(|(html, css)| render_pipeline(html, css, &opts_owned, None))
+            .collect()
+    });
 
     results
         .into_iter()

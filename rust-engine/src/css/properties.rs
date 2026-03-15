@@ -284,8 +284,7 @@ impl ComputedStyle {
     /// Get the font size in px (defaults to 16.0).
     pub fn font_size_px(&self, parent_font_size: f64, root_font_size: f64) -> f64 {
         self.get(&CssProperty::FontSize)
-            .and_then(|v| v.as_length())
-            .map(|l| l.to_px(parent_font_size, parent_font_size, root_font_size))
+            .and_then(|v| v.as_px(parent_font_size, parent_font_size, root_font_size))
             .unwrap_or(16.0)
     }
 
@@ -422,8 +421,7 @@ impl ComputedStyle {
         root_font_size: f64,
     ) -> f64 {
         self.get(prop)
-            .and_then(|v| v.as_length())
-            .map(|l| l.to_px(parent_size, font_size, root_font_size))
+            .and_then(|v| v.as_px(parent_size, font_size, root_font_size))
             .unwrap_or(0.0)
     }
 

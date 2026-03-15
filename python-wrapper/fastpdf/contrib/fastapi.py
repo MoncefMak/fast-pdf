@@ -47,8 +47,13 @@ from fastpdf.core import (
 )
 
 
-# Thread pool for running sync Rust rendering in async context
-_executor = ThreadPoolExecutor(max_workers=4)
+# Dedicated thread pool for PDF rendering — avoids saturating the asyncio default pool
+_pdf_executor = ThreadPoolExecutor(
+    max_workers=4,
+    thread_name_prefix="ferropdf-worker"
+)
+# Legacy alias for backwards compatibility
+_executor = _pdf_executor
 
 
 class PdfResponse(Response):
@@ -155,9 +160,9 @@ async def render_pdf_async(
     bytes
         Raw PDF content.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
-        _executor,
+        _pdf_executor,
         lambda: render_pdf(html, css=css, options=options),
     )
 

@@ -7,10 +7,16 @@
 
 use std::collections::HashMap;
 
+use once_cell::sync::Lazy;
+
 use crate::css::stylesheet::{CssRule, Declaration, Stylesheet};
 use crate::css::properties::CssProperty;
 use crate::css::selector::Selector;
 use crate::css::values::{Color, CssValue, Length};
+
+/// Pre-compiled regex for extracting Tailwind class attributes.
+static CLASS_ATTR_RE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r#"class="([^"]*)"#).expect("static regex"));
 
 /// Resolve a subset of Tailwind CSS utility classes to CSS declarations.
 ///
@@ -460,9 +466,8 @@ impl TailwindResolver {
     /// Extract all Tailwind utility classes from an HTML string.
     pub fn extract_classes_from_html(html: &str) -> Vec<String> {
         let mut classes = Vec::new();
-        let re = regex::Regex::new(r#"class="([^"]*)"#).unwrap();
 
-        for cap in re.captures_iter(html) {
+        for cap in CLASS_ATTR_RE.captures_iter(html) {
             if let Some(class_str) = cap.get(1) {
                 for class in class_str.as_str().split_whitespace() {
                     if !classes.contains(&class.to_string()) {

@@ -126,6 +126,16 @@ impl Renderer {
             self.render_box(content_box, offset_x, offset_y, &mut commands);
         }
 
+        // Render header (absolute position — no content offset)
+        if let Some(ref header_box) = page.header_content {
+            self.render_box(header_box, 0.0, 0.0, &mut commands);
+        }
+
+        // Render footer (absolute position — no content offset)
+        if let Some(ref footer_box) = page.footer_content {
+            self.render_box(footer_box, 0.0, 0.0, &mut commands);
+        }
+
         commands
     }
 

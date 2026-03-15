@@ -49,6 +49,38 @@ class ConfigError(FastPdfError):
     pass
 
 
+def _convert_rust_error(exc: Exception) -> FastPdfError:
+    """Map a raw Rust/PyO3 ``RuntimeError`` to a typed ``FastPdfError`` subclass.
+
+    PyO3 surfaces Rust errors as ``RuntimeError`` with descriptive messages.
+    This helper inspects the message and returns the most specific Python
+    exception so callers can ``except RenderError`` instead of a bare
+    ``RuntimeError``.
+    """
+    msg = str(exc)
+    low = msg.lower()
+
+    if "template" in low or "jinja" in low:
+        return TemplateError(f"Template rendering error: {msg}")
+    if "config" in low or "option" in low or "invalid" in low:
+        return ConfigError(f"Configuration error: {msg}")
+    if "font" in low:
+        return RenderError(
+            f"Font error: {msg}\nHint: check that the font file exists and is valid TTF/OTF."
+        )
+    if "image" in low:
+        return RenderError(f"Image processing error: {msg}")
+    if "css" in low:
+        return RenderError(f"CSS processing error: {msg}")
+    if ("html" in low and ("parse" in low or "error" in low)) or "parse" in low:
+        return RenderError(f"HTML parsing failed: {msg}")
+    if "layout" in low:
+        return RenderError(f"Layout computation error: {msg}")
+    if "pdf" in low or "generat" in low:
+        return RenderError(f"PDF generation failed: {msg}")
+    return RenderError(f"Rendering failed: {msg}")
+
+
 # ---------------------------------------------------------------------------
 # Page size presets (width_mm, height_mm)
 # ---------------------------------------------------------------------------
@@ -312,7 +344,10 @@ class PdfEngine:
             html = f"<style>{css}</style>\n{html}"
 
         rust_opts = opts._to_rust()
-        pdf_bytes = self._rust_engine.render(html, options=rust_opts)
+        try:
+            pdf_bytes = self._rust_engine.render(html, options=rust_opts)
+        except Exception as e:
+            raise _convert_rust_error(e) from e
 
         return PdfDocument(
             data=pdf_bytes,
@@ -398,7 +433,10 @@ class PdfEngine:
             css = item.get("css", "")
             doc_pairs.append((html, css))
 
-        results = self._rust_engine.batch_render(doc_pairs, options=rust_opts)
+        try:
+            results = self._rust_engine.batch_render(doc_pairs, options=rust_opts)
+        except Exception as e:
+            raise _convert_rust_error(e) from e
 
         return [
             PdfDocument(data=pdf_bytes, page_count=1, title=opts.title)
@@ -443,11 +481,16 @@ def render_pdf(
     if css:
         html = f"<style>{css}</style>\n{html}"
 
-    if options:
-        rust_opts = options._to_rust()
-        return _rust_render_html_to_pdf_bytes(html, options=rust_opts)
-    else:
-        return _rust_render_html_to_pdf_bytes(html)
+    try:
+        if options:
+            rust_opts = options._to_rust()
+            return _rust_render_html_to_pdf_bytes(html, options=rust_opts)
+        else:
+            return _rust_render_html_to_pdf_bytes(html)
+    except FastPdfError:
+        raise
+    except Exception as e:
+        raise _convert_rust_error(e) from e
 
 
 def render_pdf_to_file(

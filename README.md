@@ -6,7 +6,7 @@ FerroPDF is a Rust-powered PDF rendering engine with a clean Python API. Simple 
 
 ## Features
 
-- **Blazing fast** — Rust core engine, 405 µs for simple documents; **52–88× faster than WeasyPrint**, **57–1220× faster than wkhtmltopdf**
+- **Blazing fast** — Rust core engine, **258 µs** for simple documents; **57–1220× faster than wkhtmltopdf** (WeasyPrint not available on this machine)
 - **Full HTML/CSS support** — HTML5 parsing, CSS3 styling, flexbox, tables
 - **Tailwind CSS** — Use utility classes directly, no build step required
 - **Template rendering** — Jinja2 templates with context variables
@@ -276,6 +276,23 @@ Render multiple documents in parallel. Each item is a dict with `"html"` and opt
 
 ## Performance
 
+### Internal benchmarks (Python `statistics`, 200 iterations)
+
+Measured with `benchmark.py` — 200 iterations for simple/styled, 100 for tables/tailwind.  
+Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2, 2026-03-16.
+
+| Document | Mean | Median | Min | p95 |
+|---|---|---|---|---|
+| Simple HTML | **0.24 ms** | 0.24 ms | 0.23 ms | 0.26 ms |
+| Styled HTML | **0.37 ms** | 0.35 ms | 0.34 ms | 0.54 ms |
+| 50-row Table | **3.28 ms** | 3.23 ms | 2.69 ms | 4.14 ms |
+| Complex Report | **4.56 ms** | 4.51 ms | 4.19 ms | 5.03 ms |
+| Tailwind CSS | **0.34 ms** | 0.30 ms | 0.29 ms | 0.38 ms |
+| Batch 10 docs (parallel) | **0.58 ms** | 0.54 ms | 0.48 ms | 0.75 ms |
+| Batch 50 docs (parallel) | **2.45 ms** | 2.36 ms | 2.20 ms | 2.94 ms |
+
+> Memory: 100× Complex Report renders peak at **8 KB** (Python tracemalloc).
+
 ### Criterion.rs benchmarks (statistical)
 
 Measured with [Criterion.rs](https://github.com/bheisler/criterion.rs) — 100 samples per benchmark, 95% confidence intervals.
@@ -323,25 +340,72 @@ cd rust-engine && cargo bench --bench render_bench
 
 The CI also runs benchmarks on every push — see the [Benchmarks workflow](../../actions/workflows/benchmark.yml).
 
-### Python-level benchmarks — FerroPDF vs WeasyPrint
+### Python-level benchmarks — FerroPDF vs wkhtmltopdf
 
-Full pipeline (HTML → PDF bytes), including PyO3 overhead. Measured with `benchmark_comparison.py` — 10 timed runs + 1 warm-up per fixture.
-Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2.
+Full pipeline (HTML → PDF bytes), including PyO3 overhead. Measured with `benchmark_comparison.py` — 15 timed runs + 1 warm-up per fixture.  
+Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2, 2026-03-16.
 
-| Document | FerroPDF | WeasyPrint | wkhtmltopdf | vs WeasyPrint | vs wkhtmltopdf |
-|---|---|---|---|---|---|
-| Simple HTML | **405 µs** ±23 µs | 21.1 ms ±2.7 ms | 494.2 ms ±60.5 ms | **52× faster** | **1220× faster** |
-| Styled HTML | **541 µs** ±61 µs | 28.1 ms ±2.5 ms | 482.0 ms ±42.6 ms | **52× faster** | **891× faster** |
-| Table 10 rows | **1.4 ms** ±126 µs | 124.7 ms ±30.9 ms | 499.4 ms ±59.6 ms | **88× faster** | **357× faster** |
-| Table 50 rows | **5.1 ms** ±434 µs | 387.8 ms ±33.9 ms | 538.1 ms ±29.8 ms | **76× faster** | **106× faster** |
-| Table 100 rows | **9.5 ms** ±630 µs | 685.2 ms ±66.2 ms | 544.0 ms ±55.8 ms | **72× faster** | **57× faster** |
+| Document | FerroPDF | wkhtmltopdf | vs wkhtmltopdf |
+|---|---|---|---|
+| Simple HTML | **258 µs** ±10 µs | 533.5 ms ±72.9 ms | **2067× faster** |
+| Styled HTML | **406 µs** ±15 µs | 524.9 ms ±49.1 ms | **1293× faster** |
+| Table 10 rows | **1.7 ms** ±81 µs | 522.1 ms ±48.7 ms | **307× faster** |
+| Table 50 rows | **4.6 ms** ±257 µs | 517.3 ms ±45.6 ms | **112× faster** |
+| Table 100 rows | **10.6 ms** ±815 µs | 531.6 ms ±66.2 ms | **50× faster** |
+
+> WeasyPrint was not available in this environment. Previously measured: 52–88× faster than WeasyPrint.
 
 Reproduce:
 
 ```bash
-pip install weasyprint
 sudo apt install wkhtmltopdf   # optional
-python benchmarks/benchmark_comparison.py --runs 10 --output benchmarks/benchmark_results.md
+python benchmarks/benchmark_comparison.py --runs 15 --output benchmarks/benchmark_results.md
+```
+
+### FastAPI & Django integration benchmarks
+
+Measured with `benchmark_integrations.py` — 30 timed runs + 1 warm-up.  
+Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2, 2026-03-16.
+
+#### FastAPI — HTTP endpoint (full round-trip, localhost)
+
+| Endpoint | Mean | Min | p95 |
+|---|---|---|---|
+| `GET /simple.pdf` (plain HTML) | **995 µs** | 877 µs | 1.32 ms |
+| `GET /styled.pdf` (CSS styled) | **1.27 ms** | 1.04 ms | 1.55 ms |
+| `GET /invoice.pdf` (10-row table) | **1.87 ms** | 1.73 ms | 2.21 ms |
+| `GET /async.pdf` (render_pdf_async) | **1.45 ms** | 1.25 ms | 1.71 ms |
+| `GET /tailwind.pdf` (Tailwind CSS) | **1.78 ms** | 1.48 ms | 2.15 ms |
+
+> HTTP overhead (uvicorn loopback) ≈ 0.6–0.8 ms. Raw render time is the difference from the async numbers below.
+
+#### FastAPI — `render_pdf_async` (asyncio thread-pool, no HTTP overhead)
+
+| Operation | Mean | Min | p95 |
+|---|---|---|---|
+| `render_pdf_async` simple HTML | **304 µs** | 240 µs | 361 µs |
+| `render_pdf_async` styled HTML | **390 µs** | 369 µs | 461 µs |
+| `render_pdf_async` invoice table | **1.06 ms** | 982 µs | 1.12 ms |
+| `batch_render_async` 5 docs | **1.55 ms** | 1.34 ms | 1.87 ms |
+| `batch_render_async` 10 docs | **1.27 ms** | 1.04 ms | 2.65 ms |
+
+#### Django — `render_html_to_pdf_response` (in-process)
+
+| Operation | Mean | Min | p95 |
+|---|---|---|---|
+| `render_pdf` simple HTML | **160 µs** | 156 µs | 170 µs |
+| `render_pdf` styled CSS | **310 µs** | 300 µs | 343 µs |
+| `render_pdf` invoice table | **940 µs** | 912 µs | 985 µs |
+| `render_pdf` Tailwind | **639 µs** | 620 µs | 681 µs |
+| `render_html_to_pdf_response` simple | **191 µs** | 182 µs | 217 µs |
+| `render_html_to_pdf_response` styled | **334 µs** | 323 µs | 355 µs |
+| `render_html_to_pdf_response` inline | **339 µs** | 323 µs | 393 µs |
+
+Reproduce:
+
+```bash
+pip install "fastapi[all]" uvicorn httpx django
+python benchmarks/benchmark_integrations.py
 ```
 
 ## Development
@@ -399,6 +463,25 @@ ferropdf/
 ├── tests/                 # Test suites
 └── pyproject.toml         # Build configuration
 ```
+
+## Known Limitations
+
+FerroPDF is a fast, self-contained renderer — not a browser engine. Some CSS features are out of scope or planned for later releases:
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `position: absolute / fixed` | Not implemented | Planned v0.2 |
+| `@media` queries | Ignored | Planned v0.3 |
+| `:hover`, `:focus`, `:active` | Not applicable | Interactive-only pseudo-classes |
+| CSS Grid (`display: grid`) | Not implemented | Planned v0.3 |
+| Tailwind JIT arbitrary values (`w-[123px]`) | Not supported | Static utilities only |
+| `@font-face` remote URLs | Not supported | Use `register_font()` for local files |
+| SVG inline rendering | Not implemented | Use `<img>` with raster formats |
+| JavaScript execution | Not supported | Static HTML/CSS only |
+| `border-radius` on images | Partially supported | Box clip only |
+| Multi-column layout | Not implemented | Use flexbox or tables instead |
+
+If you hit a layout issue, try simplifying your CSS — a subset of CSS3 (flexbox, tables, most box-model properties, custom properties, `calc()`, basic selectors including `:nth-child` and `:not`) is fully supported.
 
 ## License
 

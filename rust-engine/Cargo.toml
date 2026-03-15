@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Python bindings
-pyo3 = { version = "0.22", features = ["extension-module", "generate-import-lib"] }
+pyo3 = { version = "0.22", features = ["extension-module", "generate-import-lib", "abi3-py38"] }
 
 # PDF generation
 printpdf = { version = "0.7", features = ["embedded_images"] }
@@ -75,4 +75,4 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
-panic = "abort"
+panic = "unwind"

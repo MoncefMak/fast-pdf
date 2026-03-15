@@ -2,6 +2,8 @@
 //!
 //! Uses a custom parser that handles the subset of CSS needed for PDF rendering.
 
+use std::collections::HashMap;
+
 use crate::error::Result;
 
 use super::properties::CssProperty;
@@ -32,8 +34,9 @@ impl CssParser {
                 Self::parse_at_rule(&mut chars, &mut position, &mut stylesheet)?;
             } else {
                 // Regular rule
-                if let Some(rule) = Self::parse_rule(&mut chars, &mut position)? {
+                if let Some((rule, vars)) = Self::parse_rule(&mut chars, &mut position)? {
                     stylesheet.rules.push(rule);
+                    stylesheet.custom_properties.extend(vars);
                 }
             }
         }
@@ -43,7 +46,8 @@ impl CssParser {
 
     /// Parse a CSS style attribute (inline styles).
     pub fn parse_inline(style: &str) -> Result<Vec<Declaration>> {
-        Self::parse_declarations(style)
+        let (decls, _vars) = Self::parse_declarations(style)?;
+        Ok(decls)
     }
 
     /// Preprocess CSS: normalize whitespace.
@@ -122,7 +126,7 @@ impl CssParser {
                 }
 
                 let block = Self::read_block(chars, position);
-                let declarations = Self::parse_declarations(&block)?;
+                let (declarations, _) = Self::parse_declarations(&block)?;
 
                 let selector = if selector_text.trim().is_empty() {
                     None
@@ -144,7 +148,7 @@ impl CssParser {
                 }
 
                 let block = Self::read_block(chars, position);
-                let declarations = Self::parse_declarations(&block)?;
+                let (declarations, _) = Self::parse_declarations(&block)?;
 
                 let mut family = String::new();
                 let mut src = String::new();
@@ -209,11 +213,11 @@ impl CssParser {
         Ok(())
     }
 
-    /// Parse a regular CSS rule.
+    /// Parse a regular CSS rule. Returns the rule and any CSS custom properties found.
     fn parse_rule(
         chars: &mut std::iter::Peekable<std::str::Chars>,
         position: &mut usize,
-    ) -> Result<Option<CssRule>> {
+    ) -> Result<Option<(CssRule, HashMap<String, String>)>> {
         Self::skip_whitespace_and_comments(chars, position);
 
         // Read selector text
@@ -243,17 +247,20 @@ impl CssParser {
             return Ok(None);
         }
 
-        let declarations = Self::parse_declarations(&block)?;
+        let (declarations, vars) = Self::parse_declarations(&block)?;
 
-        Ok(Some(CssRule {
+        Ok(Some((CssRule {
             selectors,
             declarations,
-        }))
+        }, vars)))
     }
 
     /// Parse declarations from a block string.
-    fn parse_declarations(block: &str) -> Result<Vec<Declaration>> {
+    /// Returns `(declarations, custom_properties)`.
+    /// Custom properties (`--name: value`) are extracted into the second tuple element.
+    fn parse_declarations(block: &str) -> Result<(Vec<Declaration>, HashMap<String, String>)> {
         let mut declarations = Vec::new();
+        let mut vars: HashMap<String, String> = HashMap::new();
 
         for part in block.split(';') {
             let part = part.trim();
@@ -264,6 +271,12 @@ impl CssParser {
             if let Some(colon_pos) = part.find(':') {
                 let prop_name = part[..colon_pos].trim();
                 let mut value_str = part[colon_pos + 1..].trim().to_string();
+
+                // CSS custom property (variable declaration)
+                if prop_name.starts_with("--") {
+                    vars.insert(prop_name.to_string(), value_str);
+                    continue;
+                }
 
                 let important = if value_str.contains("!important") {
                     value_str = value_str.replace("!important", "").trim().to_string();
@@ -296,7 +309,7 @@ impl CssParser {
             }
         }
 
-        Ok(declarations)
+        Ok((declarations, vars))
     }
 
     /// Expand CSS shorthand properties into individual properties.

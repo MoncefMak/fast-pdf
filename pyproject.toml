@@ -39,7 +39,9 @@ fastapi = ["fastapi>=0.68", "starlette>=0.14"]
 all = ["django>=3.2", "fastapi>=0.68", "starlette>=0.14"]
 dev = [
     "pytest>=7.0",
+    "pytest-cov>=4.0",
     "pytest-benchmark>=4.0",
+    "maturin>=1.0",
     "weasyprint>=60.0",
     "httpx>=0.24",
 ]
@@ -56,6 +58,18 @@ manifest-path = "rust-engine/Cargo.toml"
 python-source = "python-wrapper"
 module-name = "fastpdf._engine"
 features = ["pyo3/extension-module"]
+include = [
+    { path = "fastpdf/py.typed", format = "wheel" }
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
+addopts = "--tb=short -v"
+
+[tool.coverage.run]
+source = ["fastpdf"]
+omit = ["*/test_*", "*/__init__.py"]
+
+[tool.coverage.report]
+fail_under = 55
+show_missing = true

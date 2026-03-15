@@ -3,9 +3,9 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "fast-pdf"
+name = "ferropdf"
 version = "0.1.0"
-description = "High-performance PDF generation from HTML/CSS/Tailwind templates — Rust-powered, 10-100x faster than WeasyPrint"
+description = "High-performance PDF generation from HTML/CSS/Tailwind — Rust-powered Python library"
 readme = "README.md"
 license = { text = "MIT OR Apache-2.0" }
 requires-python = ">=3.8"

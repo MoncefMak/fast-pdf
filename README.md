@@ -22,7 +22,7 @@ FastPDF is a Rust-powered PDF rendering engine with a clean Python API. Complex 
 ### Installation
 
 ```bash
-pip install fastpdf
+pip install ferropdf
 ```
 
 ### Basic Usage

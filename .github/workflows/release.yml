@@ -96,7 +96,7 @@ jobs:
     needs: [linux, macos, windows, sdist]
     environment:
       name: pypi
-      url: https://pypi.org/p/fast-pdf
+      url: https://pypi.org/p/ferropdf
     permissions:
       id-token: write   # trusted publishing
     steps:

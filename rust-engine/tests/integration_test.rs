@@ -10,7 +10,6 @@ use fastpdf_engine::fonts::{self, FontCache};
 use fastpdf_engine::images::ImageCache;
 use fastpdf_engine::tailwind::TailwindResolver;
 use fastpdf_engine::renderer::Renderer;
-use fastpdf_engine::pdf::PdfGenerator;
 
 #[test]
 fn test_full_pipeline_simple() {

@@ -780,7 +780,6 @@ impl Default for PdfGenerator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::fonts::metrics;
 
     #[test]

@@ -23,12 +23,14 @@ jobs:
         working-directory: rust-engine
         run: cargo test
 
-      - name: Build Python wheel
+      - name: Build and install Python wheel
         run: |
-          pip install maturin
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install maturin pytest
           maturin develop
 
       - name: Python tests
         run: |
-          pip install pytest
+          source .venv/bin/activate
           pytest tests/python/ -v

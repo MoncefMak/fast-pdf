@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1f2937; font-size: 10pt; }
+
+    .invoice-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 3px solid #2563eb;
+    }
+    .invoice-title { font-size: 28pt; font-weight: bold; color: #2563eb; }
+    .invoice-meta { text-align: right; }
+    .invoice-meta .label { color: #6b7280; font-size: 9pt; text-transform: uppercase; }
+    .invoice-meta .value { font-size: 11pt; font-weight: bold; margin-bottom: 4px; }
+
+    .parties { display: flex; justify-content: space-between; margin-bottom: 30px; }
+    .party { width: 45%; }
+    .party-label { font-size: 9pt; color: #6b7280; text-transform: uppercase; margin-bottom: 8px; font-weight: bold; }
+    .party-name { font-size: 13pt; font-weight: bold; color: #111827; margin-bottom: 4px; }
+    .party-detail { font-size: 9pt; color: #4b5563; line-height: 1.5; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    thead th {
+        background-color: #2563eb;
+        color: white;
+        padding: 10px 12px;
+        text-align: left;
+        font-size: 9pt;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    thead th:last-child, thead th:nth-child(2), thead th:nth-child(3) { text-align: right; }
+    tbody td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e5e7eb;
+        font-size: 10pt;
+    }
+    tbody td:last-child, tbody td:nth-child(2), tbody td:nth-child(3) { text-align: right; }
+    tbody tr:nth-child(even) { background-color: #f9fafb; }
+
+    .totals { margin-left: auto; width: 280px; }
+    .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 10pt; }
+    .total-row.subtotal { border-top: 1px solid #e5e7eb; padding-top: 10px; }
+    .total-row.grand-total {
+        border-top: 2px solid #2563eb;
+        padding-top: 10px;
+        margin-top: 4px;
+        font-size: 14pt;
+        font-weight: bold;
+        color: #2563eb;
+    }
+
+    .notes {
+        margin-top: 40px;
+        padding: 15px;
+        background-color: #f3f4f6;
+        border-left: 4px solid #2563eb;
+        font-size: 9pt;
+        color: #4b5563;
+        line-height: 1.5;
+    }
+    .notes-label { font-weight: bold; color: #374151; margin-bottom: 4px; }
+
+    .footer {
+        margin-top: 40px;
+        text-align: center;
+        font-size: 8pt;
+        color: #9ca3af;
+        border-top: 1px solid #e5e7eb;
+        padding-top: 15px;
+    }
+</style>
+</head>
+<body>
+    <div class="invoice-header">
+        <div>
+            <div class="invoice-title">INVOICE</div>
+            <div style="color: #6b7280; margin-top: 4px;">{{ company.name }}</div>
+        </div>
+        <div class="invoice-meta">
+            <div class="label">Invoice Number</div>
+            <div class="value">{{ invoice_number }}</div>
+            <div class="label">Date</div>
+            <div class="value">{{ date }}</div>
+            <div class="label">Due Date</div>
+            <div class="value">{{ due_date }}</div>
+        </div>
+    </div>
+
+    <div class="parties">
+        <div class="party">
+            <div class="party-label">From</div>
+            <div class="party-name">{{ company.name }}</div>
+            <div class="party-detail">
+                {{ company.address }}<br>
+                {{ company.city }}<br>
+                {{ company.email }}
+            </div>
+        </div>
+        <div class="party">
+            <div class="party-label">Bill To</div>
+            <div class="party-name">{{ customer.name }}</div>
+            <div class="party-detail">
+                {{ customer.company }}<br>
+                {{ customer.address }}<br>
+                {{ customer.city }}<br>
+                {{ customer.email }}
+            </div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th>Qty</th>
+                <th>Rate</th>
+                <th>Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.description }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>${{ "%.2f"|format(item.rate) }}</td>
+                <td>${{ "%.2f"|format(item.total) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totals">
+        <div class="total-row subtotal">
+            <span>Subtotal</span>
+            <span>${{ "%.2f"|format(subtotal) }}</span>
+        </div>
+        <div class="total-row">
+            <span>Tax ({{ "%.1f"|format(tax_rate * 100) }}%)</span>
+            <span>${{ "%.2f"|format(tax) }}</span>
+        </div>
+        <div class="total-row grand-total">
+            <span>Total</span>
+            <span>${{ "%.2f"|format(total) }}</span>
+        </div>
+    </div>
+
+    {% if notes %}
+    <div class="notes">
+        <div class="notes-label">Notes</div>
+        {{ notes }}
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        Thank you for your business! &mdash; {{ company.name }}
+    </div>
+</body>
+</html>

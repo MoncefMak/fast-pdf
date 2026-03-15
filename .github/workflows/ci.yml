@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Rust tests
+        working-directory: rust-engine
+        run: cargo test
+
+      - name: Build Python wheel
+        run: |
+          pip install maturin
+          maturin develop
+
+      - name: Python tests
+        run: |
+          pip install pytest
+          pytest tests/python/ -v

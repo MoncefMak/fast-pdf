@@ -2,7 +2,7 @@
 
 **High-performance PDF generation from HTML, CSS, and Tailwind templates.**
 
-FastPDF is a Rust-powered PDF rendering engine with a clean Python API. It's designed as a drop-in replacement for WeasyPrint with **10-100x better performance**.
+FastPDF is a Rust-powered PDF rendering engine with a clean Python API. Complex reports render in under 6ms.
 
 ## Features
 
@@ -276,15 +276,19 @@ Render multiple documents in parallel. Each item is a dict with `"html"` and opt
 
 ## Performance
 
-Target benchmarks (vs WeasyPrint):
+Measured on a single-core Linux machine (median times, 100 iterations):
 
-| Document Type | FastPDF | WeasyPrint | Speedup |
-|---|---|---|---|
-| Simple HTML | <10ms | ~200ms | **20x** |
-| Styled document | <30ms | ~500ms | **16x** |
-| 50-row table | <50ms | ~800ms | **16x** |
-| Complex report | <100ms | ~1500ms | **15x** |
-| Batch 10 docs | <100ms | ~2000ms | **20x** |
+| Document Type | FastPDF (median) |
+|---|---|
+| Simple HTML | **0.25 ms** |
+| Styled HTML | **0.37 ms** |
+| 50-row table | **3.75 ms** |
+| Complex report | **5.57 ms** |
+| Tailwind CSS | **0.32 ms** |
+| Batch 10 docs (parallel) | **0.54 ms** |
+| Batch 50 docs (parallel) | **2.76 ms** |
+
+Run `python benchmarks/benchmark.py` to reproduce.
 
 ## Development
 

@@ -2,11 +2,11 @@
 
 **High-performance PDF generation from HTML, CSS, and Tailwind templates.**
 
-FerroPDF is a Rust-powered PDF rendering engine with a clean Python API. Complex reports render in under 6ms.
+FerroPDF is a Rust-powered PDF rendering engine with a clean Python API. Simple documents render in under 300 µs; 100-row styled tables in under 12 ms.
 
 ## Features
 
-- **Blazing fast** — Rust core engine, <100ms for simple documents
+- **Blazing fast** — Rust core engine, 264 µs for simple documents; **63–88× faster than WeasyPrint**
 - **Full HTML/CSS support** — HTML5 parsing, CSS3 styling, flexbox, tables
 - **Tailwind CSS** — Use utility classes directly, no build step required
 - **Template rendering** — Jinja2 templates with context variables
@@ -323,9 +323,25 @@ cd rust-engine && cargo bench --bench render_bench
 
 The CI also runs benchmarks on every push — see the [Benchmarks workflow](../../actions/workflows/benchmark.yml).
 
-### Python-level benchmarks
+### Python-level benchmarks — FerroPDF vs WeasyPrint
 
-Run `python benchmarks/benchmark.py` for end-to-end measurements including PyO3 overhead.
+Full pipeline (HTML → PDF bytes), including PyO3 overhead. Measured with `benchmark_comparison.py` — 10 timed runs + 1 warm-up per fixture.
+Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2.
+
+| Document | FerroPDF | WeasyPrint | Speedup |
+|---|---|---|---|
+| Simple HTML | **264 µs** ±18 µs | 17.8 ms ±1.1 ms | **67× faster** |
+| Styled HTML | **352 µs** ±39 µs | 31.0 ms ±2.5 ms | **88× faster** |
+| Table 10 rows | **1.5 ms** ±220 µs | 110.7 ms ±13.8 ms | **74× faster** |
+| Table 50 rows | **5.0 ms** ±606 µs | 394.9 ms ±48.0 ms | **79× faster** |
+| Table 100 rows | **11.8 ms** ±2.1 ms | 745.1 ms ±44.6 ms | **63× faster** |
+
+Reproduce:
+
+```bash
+pip install weasyprint
+python benchmarks/benchmark_comparison.py --runs 10 --output benchmarks/benchmark_results.md
+```
 
 ## Development
 

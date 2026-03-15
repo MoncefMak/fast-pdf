@@ -276,19 +276,56 @@ Render multiple documents in parallel. Each item is a dict with `"html"` and opt
 
 ## Performance
 
-Measured on an **Intel Core i5-10210U** (4 cores / 8 threads, 1.6–4.2 GHz), 24 GB RAM, Debian 12 — median times over 100 iterations:
+### Criterion.rs benchmarks (statistical)
 
-| Document Type | FastPDF (median) |
+Measured with [Criterion.rs](https://github.com/bheisler/criterion.rs) — 100 samples per benchmark, 95% confidence intervals.
+Machine: **Intel Core i5-10210U** (4C/8T, 1.6–4.2 GHz), 24 GB RAM, Debian 12.
+
+#### Full pipeline (HTML+CSS → PDF)
+
+| Document | Time (95% CI) |
 |---|---|
-| Simple HTML | **0.25 ms** |
-| Styled HTML | **0.37 ms** |
-| 50-row table | **3.75 ms** |
-| Complex report | **5.57 ms** |
-| Tailwind CSS | **0.32 ms** |
-| Batch 10 docs (parallel) | **0.54 ms** |
-| Batch 50 docs (parallel) | **2.76 ms** |
+| Simple HTML (`<h1>` + `<p>`) | **160–167 µs** |
+| Styled HTML (headings, lists, CSS) | **481–543 µs** |
+| Complex report (tables, metrics, multi-section) | **1.32–1.34 ms** |
 
-Run `python benchmarks/benchmark.py` to reproduce on your machine.
+#### Table scaling
+
+| Rows | Time (95% CI) |
+|---|---|
+| 10 rows | **874 µs – 1.05 ms** |
+| 25 rows | **1.51–1.57 ms** |
+| 50 rows | **3.23–3.81 ms** |
+| 100 rows | **6.14–6.51 ms** |
+
+#### Individual pipeline stages (complex report)
+
+| Stage | Time (95% CI) |
+|---|---|
+| HTML parsing | **102–113 µs** |
+| CSS parsing | **8.0–8.7 µs** |
+| Layout engine | **502–555 µs** |
+| Paint commands | **47.7–49.3 µs** |
+| PDF generation | **735–837 µs** |
+
+#### Tailwind
+
+| Operation | Time (95% CI) |
+|---|---|
+| Extract classes | **85–88 µs** |
+| Resolve classes → CSS | **47–52 µs** |
+
+Reproduce locally:
+
+```bash
+cd rust-engine && cargo bench --bench render_bench
+```
+
+The CI also runs benchmarks on every push — see the [Benchmarks workflow](../../actions/workflows/benchmark.yml).
+
+### Python-level benchmarks
+
+Run `python benchmarks/benchmark.py` for end-to-end measurements including PyO3 overhead.
 
 ## Development
 

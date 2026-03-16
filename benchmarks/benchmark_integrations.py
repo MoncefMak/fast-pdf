@@ -73,6 +73,28 @@ TAILWIND_HTML = """<div class="p-8 bg-white">
 </div>
 </div>"""
 
+# Multi-page: 12 sections × 6 paragraphs → reliably spans 3+ A4 pages
+MULTIPAGE_HTML = """<html><head><style>
+body {{ font-family: Helvetica; margin: 40px; color: #222; }}
+h1 {{ color: #1a56db; page-break-before: always; }}
+h1:first-of-type {{ page-break-before: auto; }}
+p {{ line-height: 1.7; }}
+</style></head><body>
+{sections}
+</body></html>""".format(
+    sections="\n".join(
+        "<h1>Section {i}: Report Chapter {i}</h1>\n".format(i=i)
+        + "\n".join(
+            "<p>Paragraph {j} of section {i}: Lorem ipsum dolor sit amet, "
+            "consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut "
+            "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud "
+            "exercitation ullamco laboris.</p>".format(i=i, j=j)
+            for j in range(1, 7)
+        )
+        for i in range(1, 13)
+    )
+)
+
 
 # ─── Timing helpers ───────────────────────────────────────────────────────────
 
@@ -244,6 +266,80 @@ def run_django_benchmark():
     return results
 
 
+# ─── Multi-page benchmark ────────────────────────────────────────────────────
+
+def run_multipage_benchmark():
+    """Measure rendering time for documents that span multiple pages."""
+    print("\nMulti-page — render across 3+ A4 pages")
+    print("-" * 80)
+
+    try:
+        from fastpdf import render_pdf, RenderOptions
+        from fastpdf.contrib.fastapi import render_pdf_async
+    except ImportError as e:
+        print(f"  Skipped: {e}")
+        return {}
+
+    results = {}
+
+    fixtures = [
+        ("render_pdf (simple, 1 page)",        lambda: render_pdf(SIMPLE_HTML)),
+        ("render_pdf (multi-page, ~3 pages)",  lambda: render_pdf(MULTIPAGE_HTML)),
+        ("render_pdf (invoice, 1 page)",        lambda: render_pdf(INVOICE_HTML)),
+    ]
+    for label, fn in fixtures:
+        r = time_sync(fn, iterations=20)
+        print_row(label, r)
+        results[label] = r
+
+    async def _async():
+        items = [
+            ("render_pdf_async (multi-page)", lambda: render_pdf_async(MULTIPAGE_HTML)),
+        ]
+        for label, coro_factory in items:
+            r = await time_async(coro_factory, iterations=20)
+            print_row(label, r)
+            results[label] = r
+
+    asyncio.run(_async())
+    return results
+
+
+# ─── Concurrent load benchmark ────────────────────────────────────────────────
+
+def run_concurrent_benchmark():
+    """Measure throughput under concurrent PDF requests via asyncio.gather."""
+    print("\nConcurrent load — asyncio.gather at varying concurrency levels")
+    print("-" * 80)
+
+    try:
+        from fastpdf.contrib.fastapi import render_pdf_async
+    except ImportError as e:
+        print(f"  Skipped: {e}")
+        return {}
+
+    results = {}
+
+    async def _run():
+        for concurrency in [1, 5, 10, 25, 50]:
+            async def _batch(c=concurrency):
+                await asyncio.gather(*[render_pdf_async(STYLED_HTML) for _ in range(c)])
+
+            r = await time_async(_batch, iterations=10)
+            rps = concurrency / (r["mean_ms"] / 1000)
+            label = f"concurrency={concurrency:>2}"
+            print(
+                f"  {label:<35} "
+                f"mean={fmt(r['mean_ms']):>10}  "
+                f"p95={fmt(r['p95_ms']):>10}  "
+                f"throughput={rps:>7.1f} req/s"
+            )
+            results[label] = {**r, "concurrency": concurrency, "rps": rps}
+
+    asyncio.run(_run())
+    return results
+
+
 # ─── async FastAPI render_pdf_async standalone ───────────────────────────────
 
 def run_async_benchmark():
@@ -285,7 +381,11 @@ def run_async_benchmark():
 
 # ─── Markdown report ─────────────────────────────────────────────────────────
 
-def save_integration_markdown(fastapi_http, django_results, async_results, path="benchmarks/benchmark_results_integration.md"):
+def save_integration_markdown(
+    fastapi_http, django_results, async_results,
+    multipage_results=None, concurrent_results=None,
+    path="benchmarks/benchmark_results_integration.md",
+):
     lines = [
         "## FastAPI & Django Integration Benchmarks",
         "",
@@ -323,6 +423,30 @@ def save_integration_markdown(fastapi_http, django_results, async_results, path=
         lines.append(
             f"| `{label}` | {fmt(r['mean_ms'])} | {fmt(r['median_ms'])} | {fmt(r['min_ms'])} | {fmt(r['p95_ms'])} |"
         )
+    if multipage_results:
+        lines += [
+            "",
+            "### Multi-page rendering",
+            "",
+            "| Document | Mean | Median | Min | p95 |",
+            "|---|---|---|---|---|",
+        ]
+        for label, r in multipage_results.items():
+            lines.append(
+                f"| `{label}` | {fmt(r['mean_ms'])} | {fmt(r['median_ms'])} | {fmt(r['min_ms'])} | {fmt(r['p95_ms'])} |"
+            )
+    if concurrent_results:
+        lines += [
+            "",
+            "### Concurrent load (`render_pdf_async` via `asyncio.gather`)",
+            "",
+            "| Concurrency | Mean total | p95 total | Throughput |",
+            "|---|---|---|---|",
+        ]
+        for label, r in concurrent_results.items():
+            lines.append(
+                f"| {r['concurrency']} | {fmt(r['mean_ms'])} | {fmt(r['p95_ms'])} | {r['rps']:.1f} req/s |"
+            )
     lines += [
         "",
         "> 1 warm-up run + 30 timed iterations per case. Mean +/- stdev reported.",
@@ -346,8 +470,14 @@ def main():
     fastapi_http = run_fastapi_benchmark()
     async_results = run_async_benchmark()
     django_results = run_django_benchmark()
+    multipage_results = run_multipage_benchmark()
+    concurrent_results = run_concurrent_benchmark()
 
-    save_integration_markdown(fastapi_http, django_results, async_results)
+    save_integration_markdown(
+        fastapi_http, django_results, async_results,
+        multipage_results=multipage_results,
+        concurrent_results=concurrent_results,
+    )
 
     print("\n" + "=" * 80)
     print("All done.")

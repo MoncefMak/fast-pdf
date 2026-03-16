@@ -74,9 +74,9 @@ fn compute_column_widths(
     let mut col_pref: Vec<f64> = vec![0.0; num_cols];
     let mut col_min: Vec<f64> = vec![40.0; num_cols]; // minimum 40px per column
 
-    collect_column_widths(&table_box.children, &mut col_pref, &mut col_min, font_size);
+    let mut rows_sampled = 0usize;
+    collect_column_widths(&table_box.children, &mut col_pref, &mut col_min, font_size, &mut rows_sampled);
 
-    // Add padding + border overhead per column
     // (use first cell's padding as representative)
     let cell_overhead = first_cell_padding_h(table_box)
         + if collapsed { cell_border } else { first_cell_border_h(table_box) };
@@ -126,14 +126,23 @@ fn compute_column_widths(
     }
 }
 
-/// Walk all rows and measure preferred content width for each column.
+/// Maximum rows sampled when estimating column widths. After this many rows the
+/// max-width is almost always stable, so we skip the remaining body rows.
+/// Header rows (in `<thead>`) always count and are scanned first.
+const MAX_SAMPLE_ROWS: usize = 50;
+
+/// Walk rows and measure preferred / minimum content width for each column.
 fn collect_column_widths(
     children: &[LayoutBox],
     col_pref: &mut Vec<f64>,
     col_min: &mut Vec<f64>,
     font_size: f64,
+    rows_sampled: &mut usize,
 ) {
     for child in children {
+        if *rows_sampled >= MAX_SAMPLE_ROWS {
+            return;
+        }
         match child.box_type {
             LayoutBoxType::TableRow => {
                 let mut col = 0;
@@ -154,7 +163,7 @@ fn collect_column_widths(
                         let font_name = writer::resolve_builtin_font_name(family, weight, false);
                         let w = metrics::measure_text_width_px(&text, &font_name, fs);
                         col_pref[col] = col_pref[col].max(w);
-                        // Minimum = width of longest single word
+                        // Minimum = width of the longest single word in the cell
                         let min_w = text
                             .split_whitespace()
                             .map(|word| metrics::measure_text_width_px(word, &font_name, fs))
@@ -163,11 +172,12 @@ fn collect_column_widths(
                     }
                     col += 1;
                 }
+                *rows_sampled += 1;
             }
             LayoutBoxType::Block | LayoutBoxType::AnonymousBlock => {
                 let tag = child.tag_name.as_deref().unwrap_or("");
                 if matches!(tag, "thead" | "tbody" | "tfoot") {
-                    collect_column_widths(&child.children, col_pref, col_min, font_size);
+                    collect_column_widths(&child.children, col_pref, col_min, font_size, rows_sampled);
                 }
             }
             _ => {}

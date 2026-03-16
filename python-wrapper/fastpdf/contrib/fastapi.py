@@ -36,9 +36,11 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+from starlette.exceptions import HTTPException
 from starlette.responses import Response
 
 from fastpdf.core import (
+    FastPdfError,
     PdfDocument,
     PdfEngine,
     RenderOptions,
@@ -82,7 +84,10 @@ class PdfResponse(Response):
         status_code: int = 200,
         headers: Optional[Dict[str, str]] = None,
     ):
-        pdf_bytes = render_pdf(html, css=css, options=options)
+        try:
+            pdf_bytes = render_pdf(html, css=css, options=options)
+        except FastPdfError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         resp_headers = dict(headers or {})
         if filename:
@@ -140,6 +145,7 @@ async def render_pdf_async(
     *,
     css: Optional[str] = None,
     options: Optional[RenderOptions] = None,
+    timeout: Optional[float] = None,
 ) -> bytes:
     """Render HTML to PDF bytes asynchronously.
 
@@ -154,6 +160,9 @@ async def render_pdf_async(
         Additional CSS.
     options : RenderOptions or None
         Rendering options.
+    timeout : float or None
+        Maximum seconds to wait for rendering.  Raises ``asyncio.TimeoutError``
+        if exceeded.  ``None`` means no limit.
 
     Returns
     -------
@@ -161,10 +170,13 @@ async def render_pdf_async(
         Raw PDF content.
     """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
+    coro = loop.run_in_executor(
         _pdf_executor,
         lambda: render_pdf(html, css=css, options=options),
     )
+    if timeout is not None:
+        return await asyncio.wait_for(coro, timeout=timeout)
+    return await coro
 
 
 async def batch_render_async(
@@ -178,7 +190,7 @@ async def batch_render_async(
     """
     from fastpdf.core import batch_render as sync_batch_render
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
         _executor,
         lambda: sync_batch_render(items, options=options),
@@ -282,3 +294,89 @@ def render_template_to_pdf_response(
         headers=headers,
         media_type="application/pdf",
     )
+
+
+# ── Production helpers ──────────────────────────────────────────────────────
+
+
+async def pdf_response_async(
+    html: str,
+    *,
+    css: Optional[str] = None,
+    options: Optional[RenderOptions] = None,
+    filename: Optional[str] = None,
+    inline: bool = False,
+    status_code: int = 200,
+    timeout: Optional[float] = None,
+) -> Response:
+    """Render HTML to a PDF response **without blocking the event loop**.
+
+    Prefer this over ``PdfResponse(html)`` in production async endpoints.
+    ``PdfResponse.__init__`` calls ``render_pdf`` synchronously, which blocks
+    the uvicorn worker for the entire render duration.  This helper dispatches
+    the work to the dedicated Rust thread pool and awaits the result.
+
+    Parameters
+    ----------
+    html : str
+        HTML content.
+    css : str or None
+        Additional CSS.
+    options : RenderOptions or None
+        Rendering options.
+    filename : str or None
+        Suggested download filename.
+    inline : bool
+        Serve as ``Content-Disposition: inline`` instead of attachment.
+    status_code : int
+        HTTP status code.
+    timeout : float or None
+        Maximum seconds before raising ``asyncio.TimeoutError``.
+    """
+    pdf_bytes = await render_pdf_async(html, css=css, options=options, timeout=timeout)
+    resp_headers: Dict[str, str] = {}
+    if filename:
+        disposition = "inline" if inline else "attachment"
+        resp_headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    return Response(
+        content=pdf_bytes,
+        status_code=status_code,
+        headers=resp_headers,
+        media_type="application/pdf",
+    )
+
+
+def make_health_router(prefix: str = "/health"):
+    """Return a FastAPI ``APIRouter`` with a ``GET {prefix}/pdf`` health-check.
+
+    Mount in your app::
+
+        from fastpdf.contrib.fastapi import make_health_router
+        app.include_router(make_health_router())
+
+    Returns ``{"status": "ok", "engine": "ferropdf", "version": "..."}}`` on
+    success, or 503 if the Rust engine fails.
+    """
+    try:
+        from fastapi import APIRouter
+    except ImportError as exc:
+        raise ImportError(
+            "fastapi is required for make_health_router — "
+            "pip install fastapi"
+        ) from exc
+
+    router = APIRouter()
+
+    @router.get(f"{prefix}/pdf", tags=["health"])
+    async def _pdf_health_check():
+        from fastpdf import get_version
+        try:
+            await render_pdf_async("<p>ok</p>")
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"PDF engine unhealthy: {exc}",
+            ) from exc
+        return {"status": "ok", "engine": "ferropdf", "version": get_version()}
+
+    return router

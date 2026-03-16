@@ -13,9 +13,13 @@ categories = ["rendering", "text-processing"]
 name = "fastpdf_engine"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]
+
 [dependencies]
 # Python bindings
-pyo3 = { version = "0.22", features = ["extension-module", "generate-import-lib", "abi3-py38"] }
+pyo3 = { version = "0.24", features = ["generate-import-lib", "abi3-py38"] }
 
 # PDF generation
 printpdf = { version = "0.7", features = ["embedded_images"] }

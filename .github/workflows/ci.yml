@@ -27,15 +27,21 @@ jobs:
 
       - name: Rust tests
         working-directory: rust-engine
-        run: cargo test
+        run: cargo test --no-default-features
 
       - name: Build and install
         run: |
+          python -m venv .venv
+          source .venv/bin/activate 2>/dev/null || source .venv/Scripts/activate
           pip install maturin pytest pytest-cov
           maturin develop --release
+        shell: bash
 
       - name: Python tests
-        run: pytest tests/python/ -v --tb=short
+        run: |
+          source .venv/bin/activate 2>/dev/null || source .venv/Scripts/activate
+          pytest tests/python/ -v --tb=short
+        shell: bash
 
   lint:
     runs-on: ubuntu-latest

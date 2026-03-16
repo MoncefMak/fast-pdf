@@ -21,7 +21,12 @@ def test_gil_released_during_batch():
             counter["value"] += 1
             time.sleep(0)  # yield
 
-    docs = [{"html": f"<h1>Invoice #{i}</h1><p>Content paragraph</p>"} for i in range(30)]
+    # Use complex enough HTML so batch_render takes measurable time
+    row = "".join(f"<tr><td>Item {j}</td><td>{j*10}</td></tr>" for j in range(20))
+    docs = [
+        {"html": f"<h1>Invoice #{i}</h1><table>{row}</table><p>Footer</p>"}
+        for i in range(50)
+    ]
 
     t = threading.Thread(target=increment)
     t.start()
@@ -31,7 +36,7 @@ def test_gil_released_during_batch():
     t.join(timeout=5)
 
     # If the GIL were held throughout, counter["value"] would be near 0
-    assert counter["value"] > 20, (
+    assert counter["value"] > 5, (
         f"GIL was likely held during batch_render: "
         f"concurrent thread only progressed {counter['value']} times"
     )

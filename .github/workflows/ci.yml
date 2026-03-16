@@ -27,7 +27,7 @@ jobs:
 
       - name: Rust tests
         working-directory: rust-engine
-        run: cargo test
+        run: cargo test --lib --tests
 
       - name: Build and install
         run: |

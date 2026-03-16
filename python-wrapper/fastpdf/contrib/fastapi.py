@@ -4,6 +4,14 @@ FastPDF FastAPI Integration
 
 Provides response helpers for generating PDFs in FastAPI applications.
 
+The core ``render_pdf()`` does **not** depend on Jinja2.  Jinja2 is only
+required here for ``render_template_to_pdf_response`` which uses FastAPI's
+own ``Jinja2Templates``.
+
+Install with FastAPI extras::
+
+    pip install ferropdf[fastapi]
+
 Quick start::
 
     from fastapi import FastAPI
@@ -36,8 +44,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence, Union
 
-from starlette.exceptions import HTTPException
-from starlette.responses import Response
+try:
+    from starlette.exceptions import HTTPException
+    from starlette.responses import Response
+except ImportError as _exc:
+    raise ImportError(
+        "FastAPI/Starlette is required for fastpdf.contrib.fastapi. "
+        "Install it with: pip install ferropdf[fastapi]"
+    ) from _exc
 
 from fastpdf.core import (
     FastPdfError,
@@ -80,7 +94,7 @@ class PdfResponse(Response):
         css: Optional[str] = None,
         options: Optional[RenderOptions] = None,
         filename: Optional[str] = None,
-        inline: bool = False,
+        inline: bool = True,
         status_code: int = 200,
         headers: Optional[Dict[str, str]] = None,
     ):

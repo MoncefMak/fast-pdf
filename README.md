@@ -1,5 +1,9 @@
 # FerroPDF
 
+[![vs WeasyPrint](https://img.shields.io/badge/vs_WeasyPrint-50x_faster-brightgreen)](https://github.com/MoncefMak/ferropdf#performance)
+[![PyPI](https://img.shields.io/pypi/v/ferropdf)](https://pypi.org/project/ferropdf/)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE)
+
 **High-performance PDF generation from HTML, CSS, and Tailwind templates.**
 
 FerroPDF is a Rust-powered PDF rendering engine with a clean Python API. Simple documents render in under 500 µs; 100-row styled tables in under 10 ms.
@@ -7,22 +11,31 @@ FerroPDF is a Rust-powered PDF rendering engine with a clean Python API. Simple 
 ## Features
 
 - **Blazing fast** — Rust core engine, **359 µs** for simple documents; **50× faster than WeasyPrint**, **1336× faster than wkhtmltopdf**
-- **Full HTML/CSS support** — HTML5 parsing, CSS3 styling, flexbox, tables
+- **Full HTML/CSS support** — HTML5 parsing, CSS3 styling, flexbox, tables, box model, gradients
 - **Tailwind CSS** — Use utility classes directly, no build step required
-- **Template rendering** — Jinja2 templates with context variables
-- **Django integration** — Template rendering, HttpResponse helpers, CBV mixin, middleware
-- **FastAPI integration** — PdfResponse, async rendering, streaming support
+- **Template rendering** — Jinja2 templates for standalone use
+- **Django integration** — `render_to_pdf_response()`, CBV `PdfMixin`, `PdfMiddleware`, streaming
+- **FastAPI integration** — `PdfResponse`, `render_pdf_async()`, `StreamingPdfResponse`
 - **Parallel batch rendering** — Generate hundreds of PDFs concurrently via Rayon
 - **Minimal memory footprint** — Efficient Rust memory management
 - **Custom fonts** — Register and use TrueType/OpenType fonts
+- **RTL & Unicode** — Arabic, Hebrew, and special characters with `direction: rtl`
 - **Page management** — Headers, footers, page numbers, page breaks
 
-## Quick Start
-
-### Installation
+## Installation
 
 ```bash
+# Core only (no framework dependencies)
 pip install ferropdf
+
+# With Django integration
+pip install ferropdf[django]
+
+# With FastAPI integration
+pip install ferropdf[fastapi]
+
+# Everything
+pip install ferropdf[all]
 ```
 
 ### Basic Usage
@@ -69,7 +82,11 @@ html = """
 pdf_bytes = render_pdf(html, options=RenderOptions(tailwind=True))
 ```
 
-### Template Rendering
+### Standalone Template Rendering
+
+> **Note:** `render_pdf_from_template()` uses Jinja2 directly and requires
+> `pip install jinja2`. For Django, use `fastpdf.contrib.django` instead.
+> For FastAPI, use `Jinja2Templates` and pass rendered HTML to `PdfResponse`.
 
 ```python
 from fastpdf import render_pdf_from_template
@@ -119,65 +136,225 @@ pdf_list = batch_render(items)  # Rendered in parallel via Rayon
 
 ## Django Integration
 
-```python
-# views.py
-from fastpdf.contrib.django import render_to_pdf_response, PdfView
-
-# Function-based view
-def invoice_pdf(request, pk):
-    invoice = get_object_or_404(Invoice, pk=pk)
-    return render_to_pdf_response(
-        request,
-        "invoices/invoice.html",
-        {"invoice": invoice},
-        filename="invoice.pdf",
-    )
-
-# Class-based view
-class ReportPdfView(PdfView, DetailView):
-    model = Report
-    template_name = "reports/detail.html"
-    pdf_filename = "report.pdf"
+```bash
+pip install ferropdf[django]
 ```
 
-### Django Middleware
+### Django Settings
 
-Add automatic PDF conversion with `?format=pdf`:
+Configure Django to use Jinja2 templates (optional, works with DTL too):
 
 ```python
 # settings.py
-MIDDLEWARE = [
-    ...
-    "fastpdf.contrib.django.PdfMiddleware",
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": { "context_processors": [...] },
+    },
+    # Optional: Jinja2 backend for PDF templates
+    {
+        "BACKEND": "django.template.backends.jinja2.Jinja2",
+        "DIRS": [BASE_DIR / "templates/jinja2"],
+        "OPTIONS": {"environment": "myapp.jinja2.environment"},
+    },
 ]
 
-# settings.py (optional)
+# FerroPDF settings (optional)
 FERROPDF = {
     "DEFAULT_PAGE_SIZE": "A4",
+    "DEFAULT_ORIENTATION": "portrait",
     "DEFAULT_MARGIN": 15.0,
-    "TAILWIND": True,
+    "TAILWIND": False,
 }
+
+MIDDLEWARE = [
+    ...
+    "fastpdf.contrib.django.PdfMiddleware",  # optional: ?format=pdf on any view
+]
+```
+
+If using the Jinja2 backend, create the environment file:
+
+```python
+# myapp/jinja2.py
+from jinja2 import Environment
+from django.templatetags.static import static
+from django.urls import reverse
+
+def environment(**options):
+    env = Environment(**options)
+    env.globals.update({"static": static, "url": reverse})
+    return env
+```
+
+### Function-Based View
+
+```python
+from fastpdf.contrib.django import render_to_pdf_response
+
+def invoice(request, pk):
+    invoice = Invoice.objects.get(pk=pk)
+    return render_to_pdf_response(
+        request,
+        "invoice.html",
+        {"invoice": invoice},
+        filename="invoice.pdf",
+        page_size="A4",
+        tailwind=True,
+    )
+```
+
+### Class-Based View (PdfMixin)
+
+```python
+from django.views.generic import DetailView
+from fastpdf.contrib.django import PdfMixin
+
+class InvoiceView(PdfMixin, DetailView):
+    model = Invoice
+    template_name = "invoice.html"
+    pdf_filename = "invoice.pdf"
+    pdf_options = {"page_size": "A4", "tailwind": True}
+    # Visit /invoice/42/ → HTML, /invoice/42/?format=pdf → PDF
+```
+
+### Streaming (large documents)
+
+```python
+from fastpdf.contrib.django import render_to_pdf_stream
+
+def big_report(request):
+    return render_to_pdf_stream(
+        request,
+        "report.html",
+        {"data": get_large_dataset()},
+        filename="report.pdf",
+    )
+```
+
+### Middleware
+
+Add `PdfMiddleware` to convert any HTML view to PDF with `?format=pdf`:
+
+```python
+# Any existing view, no code changes needed:
+# GET /my-page/          → normal HTML
+# GET /my-page/?format=pdf → PDF download
 ```
 
 ## FastAPI Integration
 
+```bash
+pip install ferropdf[fastapi]
+```
+
+### Sync endpoint
+
 ```python
 from fastapi import FastAPI
-from fastpdf.contrib.fastapi import PdfResponse, render_pdf_async
+from fastpdf.contrib.fastapi import PdfResponse
 
 app = FastAPI()
 
 @app.get("/invoice/{id}")
-async def get_invoice(id: int):
-    html = f"<h1>Invoice #{id}</h1>"
+def invoice(id: int):
+    html = templates.TemplateResponse("invoice.html", {"request": {}, "id": id}).body.decode()
     return PdfResponse(html, filename=f"invoice-{id}.pdf")
+```
+
+### Async endpoint (non-blocking)
+
+```python
+from fastapi.responses import Response
+from fastpdf.contrib.fastapi import render_pdf_async
 
 @app.get("/report")
-async def get_report():
-    # Async rendering (non-blocking)
-    pdf_bytes = await render_pdf_async("<h1>Report</h1>")
-    return Response(content=pdf_bytes, media_type="application/pdf")
+async def report():
+    pdf = await render_pdf_async("<h1>Report</h1>")
+    return Response(content=pdf, media_type="application/pdf")
 ```
+
+### Streaming (large documents)
+
+```python
+from fastpdf.contrib.fastapi import StreamingPdfResponse
+
+@app.get("/big-report")
+def big_report():
+    html = generate_large_html()
+    return StreamingPdfResponse(html, filename="report.pdf")
+```
+
+### Async production helper
+
+```python
+from fastpdf.contrib.fastapi import pdf_response_async
+
+@app.get("/invoice/{id}")
+async def invoice(id: int):
+    html = f"<h1>Invoice #{id}</h1>"
+    return await pdf_response_async(html, filename=f"invoice-{id}.pdf")
+```
+
+### Batch async rendering
+
+```python
+from fastpdf.contrib.fastapi import batch_render_async
+
+@app.get("/batch")
+async def batch():
+    items = [{"html": f"<h1>Doc {i}</h1>"} for i in range(10)]
+    pdfs = await batch_render_async(items)
+    return Response(content=pdfs[0], media_type="application/pdf")
+```
+
+## CSS Rendering Support
+
+FerroPDF aims for visual parity with WeasyPrint. The following CSS features are fully supported:
+
+### Box Model
+- `margin`, `padding`, `border`, `border-radius`
+- `width`, `height`, `min-width`, `max-width`, `min-height`, `max-height`
+- `box-sizing: border-box`
+
+### Layout
+- **Flexbox**: `display: flex`, `justify-content`, `align-items`, `flex-wrap`, `gap`, `flex-grow/shrink`
+- **Tables**: `border-collapse`, `border-spacing`, `thead`/`tbody`, column widths
+- **Block/Inline**: standard flow layout with correct line breaking
+
+### Typography
+- `font-size`, `font-weight`, `font-family`, `font-style`
+- `line-height`, `letter-spacing`, `text-align`, `text-decoration`
+- `text-transform`, `white-space`
+
+### Colors & Backgrounds
+- Hex (`#1a56db`), `rgb()`, `rgba()`, `hsl()`
+- `background-color`, `background-image`
+- `linear-gradient()` backgrounds
+
+### Page Control
+- `page-break-before`, `page-break-after`, `page-break-inside: avoid`
+- `@page` margins and orientation
+- Running headers/footers with `{{page_number}}` / `{{total_pages}}`
+
+### Fonts & Internationalization
+- Custom fonts via `engine.register_font()`
+- Google Fonts via `<link>` in HTML
+- Full Unicode support (Arabic, Hebrew, CJK, special characters)
+- RTL: `direction: rtl`, `text-align: right`
+
+### Images
+- Base64 inline images (`data:image/png;base64,...`)
+- Local file images resolved via `base_path` or `resolve_static_urls()`
+- `width`, `height`, `object-fit`
+
+### Tailwind CSS
+- All utility classes: `p-*`, `m-*`, `text-*`, `bg-*`, `border-*`, `flex-*`, `grid-*`
+- Arbitrary values: `w-[210mm]`, `h-[297mm]` for exact paper formats
+- Static utilities only (responsive breakpoints ignored for PDF)
 
 ## API Reference
 
@@ -470,13 +647,14 @@ ferropdf/
 ├── python-wrapper/        # Python package
 │   └── fastpdf/
 │       ├── __init__.py     # Public API
-│       ├── core.py         # Core wrapper classes
+│       ├── core.py         # Core wrapper (no Jinja2 dependency)
 │       ├── utils.py        # Utility helpers
 │       └── contrib/
-│           ├── django.py   # Django integration
-│           └── fastapi.py  # FastAPI integration
+│           ├── django/     # Django integration (uses Django templates)
+│           │   └── __init__.py
+│           └── fastapi.py  # FastAPI integration (Jinja2 optional)
 ├── examples/              # Usage examples
-├── benchmarks/            # Performance benchmarks
+├── benchmarks/            # Performance & visual comparison benchmarks
 ├── tests/                 # Test suites
 └── pyproject.toml         # Build configuration
 ```
@@ -488,10 +666,10 @@ FerroPDF is a fast, self-contained renderer — not a browser engine. Some CSS f
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `position: absolute / fixed` | Not implemented | Planned v0.2 |
-| `@media` queries | Ignored | Planned v0.3 |
+| `@media` queries | Partial | `@media print` supported; screen queries ignored |
 | `:hover`, `:focus`, `:active` | Not applicable | Interactive-only pseudo-classes |
-| CSS Grid (`display: grid`) | Not implemented | Planned v0.3 |
-| Tailwind JIT arbitrary values (`w-[123px]`) | Not supported | Static utilities only |
+| CSS Grid (`display: grid`) | Partial | `grid-template-columns/rows` supported |
+| Tailwind arbitrary values (`w-[123px]`) | Supported | Paper formats like `w-[210mm]` work |
 | `@font-face` remote URLs | Not supported | Use `register_font()` for local files |
 | SVG inline rendering | Not implemented | Use `<img>` with raster formats |
 | JavaScript execution | Not supported | Static HTML/CSS only |

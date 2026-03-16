@@ -546,6 +546,13 @@ def render_pdf_from_template(
 ) -> bytes:
     """Render a Jinja2 template to PDF bytes.
 
+    **Standalone usage only** — this uses Jinja2 directly. For Django, use
+    ``fastpdf.contrib.django.render_to_pdf_response()`` which leverages
+    Django's own template engine. For FastAPI, use ``Jinja2Templates``
+    and pass the rendered HTML to ``PdfResponse``.
+
+    Requires ``jinja2``: ``pip install jinja2``.
+
     Parameters
     ----------
     template_name : str

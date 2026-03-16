@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ferropdf"
-version = "0.1.2"
+version = "0.1.3"
 description = "High-performance PDF generation from HTML/CSS/Tailwind — Rust-powered Python library"
 readme = "README.md"
 license = { text = "MIT OR Apache-2.0" }
@@ -29,21 +29,21 @@ classifiers = [
     "Framework :: Django",
     "Framework :: FastAPI",
 ]
-dependencies = [
-    "jinja2>=3.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
 django = ["django>=3.2"]
-fastapi = ["fastapi>=0.68", "starlette>=0.14"]
-all = ["django>=3.2", "fastapi>=0.68", "starlette>=0.14"]
+fastapi = ["fastapi>=0.95", "jinja2>=3.0", "python-multipart>=0.0.5"]
+all = ["django>=3.2", "fastapi>=0.95", "jinja2>=3.0"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-benchmark>=4.0",
+    "pytest-asyncio>=0.21",
     "maturin>=1.0",
     "weasyprint>=60.0",
     "httpx>=0.24",
+    "jinja2>=3.0",
 ]
 
 [project.urls]

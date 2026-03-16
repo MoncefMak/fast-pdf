@@ -27,7 +27,7 @@ jobs:
 
       - name: Rust tests
         working-directory: rust-engine
-        run: cargo test --lib --tests
+        run: cargo test --no-default-features
 
       - name: Build and install
         run: |

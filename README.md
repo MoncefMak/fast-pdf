@@ -6,7 +6,7 @@ FerroPDF is a Rust-powered PDF rendering engine with a clean Python API. Simple 
 
 ## Features
 
-- **Blazing fast** — Rust core engine, **332 µs** for simple documents; **74× faster than WeasyPrint**, **1486× faster than wkhtmltopdf**
+- **Blazing fast** — Rust core engine, **359 µs** for simple documents; **50× faster than WeasyPrint**, **1336× faster than wkhtmltopdf**
 - **Full HTML/CSS support** — HTML5 parsing, CSS3 styling, flexbox, tables
 - **Tailwind CSS** — Use utility classes directly, no build step required
 - **Template rendering** — Jinja2 templates with context variables
@@ -283,13 +283,13 @@ Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2, 2026-03-16.
 
 | Document | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| Simple HTML | **0.24 ms** | 0.24 ms | 0.23 ms | 0.26 ms |
-| Styled HTML | **0.37 ms** | 0.35 ms | 0.34 ms | 0.54 ms |
-| 50-row Table | **3.28 ms** | 3.23 ms | 2.69 ms | 4.14 ms |
-| Complex Report | **4.56 ms** | 4.51 ms | 4.19 ms | 5.03 ms |
-| Tailwind CSS | **0.34 ms** | 0.30 ms | 0.29 ms | 0.38 ms |
-| Batch 10 docs (parallel) | **0.58 ms** | 0.54 ms | 0.48 ms | 0.75 ms |
-| Batch 50 docs (parallel) | **2.45 ms** | 2.36 ms | 2.20 ms | 2.94 ms |
+| Simple HTML | **0.30 ms** | 0.28 ms | 0.26 ms | 0.40 ms |
+| Styled HTML | **0.43 ms** | 0.42 ms | 0.41 ms | 0.49 ms |
+| 50-row Table | **3.81 ms** | 3.75 ms | 3.47 ms | 4.30 ms |
+| Complex Report | **6.56 ms** | 6.42 ms | 5.91 ms | 7.12 ms |
+| Tailwind CSS | **0.33 ms** | 0.33 ms | 0.30 ms | 0.36 ms |
+| Batch 10 docs (parallel) | **1.64 ms** | 1.17 ms | 0.50 ms | 5.40 ms |
+| Batch 50 docs (parallel) | **4.03 ms** | 2.73 ms | 2.21 ms | 26.08 ms |
 
 > Memory: 100× Complex Report renders peak at **8 KB** (Python tracemalloc).
 
@@ -347,11 +347,11 @@ Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2, 2026-03-16.
 
 | Document | FerroPDF | WeasyPrint | wkhtmltopdf | vs WeasyPrint | vs wkhtmltopdf |
 |---|---|---|---|---|---|
-| Simple HTML | **332 µs** ±65 µs | 24.6 ms ±7.1 ms | 493.8 ms ±75.9 ms | **74× faster** | **1486× faster** |
-| Styled HTML | **364 µs** ±15 µs | 29.6 ms ±2.3 ms | 479.5 ms ±35.6 ms | **81× faster** | **1317× faster** |
-| Table 10 rows | **1.4 ms** ±180 µs | 119.3 ms ±13.0 ms | 546.3 ms ±95.7 ms | **83× faster** | **390× faster** |
-| Table 50 rows | **5.8 ms** ±443 µs | 387.0 ms ±45.5 ms | 527.7 ms ±63.4 ms | **67× faster** | **91× faster** |
-| Table 100 rows | **10.6 ms** ±510 µs | 739.2 ms ±26.1 ms | 509.8 ms ±49.3 ms | **70× faster** | **48× faster** |
+| Simple HTML | **359 µs** ±97 µs | 17.8 ms ±1.2 ms | 479.7 ms ±46.2 ms | **50× faster** | **1336× faster** |
+| Styled HTML | **448 µs** ±79 µs | 29.8 ms ±2.3 ms | 498.3 ms ±37.2 ms | **67× faster** | **1112× faster** |
+| Table 10 rows | **1.7 ms** ±172 µs | 115.0 ms ±13.7 ms | 557.4 ms ±74.7 ms | **66× faster** | **320× faster** |
+| Table 50 rows | **8.7 ms** ±1.9 ms | 384.1 ms ±28.6 ms | 554.7 ms ±58.6 ms | **44× faster** | **64× faster** |
+| Table 100 rows | **16.4 ms** ±3.5 ms | 902.9 ms ±109.3 ms | 497.7 ms ±41.3 ms | **55× faster** | **30× faster** |
 
 Reproduce:
 
@@ -369,11 +369,11 @@ Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2, 2026-03-16.
 
 | Endpoint | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| `GET /simple.pdf` (plain HTML) | **1.61 ms** | 1.54 ms | 1.28 ms | 2.02 ms |
-| `GET /styled.pdf` (CSS styled) | **1.61 ms** | 1.62 ms | 1.30 ms | 1.92 ms |
-| `GET /invoice.pdf` (10-row table) | **2.40 ms** | 2.40 ms | 2.02 ms | 2.73 ms |
-| `GET /async.pdf` (render_pdf_async) | **1.88 ms** | 1.84 ms | 1.49 ms | 2.48 ms |
-| `GET /tailwind.pdf` (Tailwind CSS) | **2.04 ms** | 1.93 ms | 1.69 ms | 2.55 ms |
+| `GET /simple.pdf` (plain HTML) | **1.53 ms** | 1.49 ms | 1.18 ms | 1.89 ms |
+| `GET /styled.pdf` (CSS styled) | **2.33 ms** | 2.26 ms | 1.85 ms | 2.70 ms |
+| `GET /invoice.pdf` (10-row table) | **3.78 ms** | 3.69 ms | 3.43 ms | 4.31 ms |
+| `GET /async.pdf` (render_pdf_async) | **2.12 ms** | 2.06 ms | 1.57 ms | 2.67 ms |
+| `GET /tailwind.pdf` (Tailwind CSS) | **2.24 ms** | 2.13 ms | 1.62 ms | 2.83 ms |
 
 > HTTP overhead (uvicorn loopback) ≈ 1.2–1.3 ms. Raw render time is the difference from the async numbers below.
 
@@ -381,42 +381,42 @@ Machine: **Linux 6.1.0-43-amd64**, Python 3.11.2, 2026-03-16.
 
 | Operation | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| `render_pdf_async` simple HTML | **352 µs** | 348 µs | 244 µs | 442 µs |
-| `render_pdf_async` styled HTML | **576 µs** | 558 µs | 385 µs | 845 µs |
-| `render_pdf_async` invoice table | **1.37 ms** | 1.28 ms | 1.07 ms | 1.82 ms |
-| `batch_render_async` 5 docs | **1.60 ms** | 1.58 ms | 1.30 ms | 2.03 ms |
-| `batch_render_async` 10 docs | **1.49 ms** | 1.36 ms | 1.06 ms | 2.47 ms |
+| `render_pdf_async` simple HTML | **389 µs** | 360 µs | 280 µs | 644 µs |
+| `render_pdf_async` styled HTML | **662 µs** | 608 µs | 492 µs | 1.01 ms |
+| `render_pdf_async` invoice table | **1.55 ms** | 1.50 ms | 1.32 ms | 1.83 ms |
+| `batch_render_async` 5 docs | **2.25 ms** | 2.21 ms | 1.64 ms | 3.77 ms |
+| `batch_render_async` 10 docs | **1.61 ms** | 1.55 ms | 1.16 ms | 2.51 ms |
 
 #### Django — `render_html_to_pdf_response` (in-process)
 
 | Operation | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| `render_pdf` simple HTML | **179 µs** | 165 µs | 156 µs | 242 µs |
-| `render_pdf` styled CSS | **318 µs** | 307 µs | 297 µs | 392 µs |
-| `render_pdf` invoice table | **992 µs** | 970 µs | 904 µs | 1.17 ms |
-| `render_pdf` Tailwind | **722 µs** | 671 µs | 618 µs | 1.04 ms |
-| `render_html_to_pdf_response` simple | **200 µs** | 190 µs | 181 µs | 266 µs |
-| `render_html_to_pdf_response` styled | **339 µs** | 325 µs | 318 µs | 388 µs |
-| `render_html_to_pdf_response` inline | **362 µs** | 342 µs | 317 µs | 445 µs |
+| `render_pdf` simple HTML | **215 µs** | 204 µs | 189 µs | 295 µs |
+| `render_pdf` styled CSS | **472 µs** | 428 µs | 386 µs | 669 µs |
+| `render_pdf` invoice table | **1.26 ms** | 1.24 ms | 1.14 ms | 1.49 ms |
+| `render_pdf` Tailwind | **746 µs** | 834 µs | 520 µs | 919 µs |
+| `render_html_to_pdf_response` simple | **352 µs** | 330 µs | 304 µs | 457 µs |
+| `render_html_to_pdf_response` styled | **631 µs** | 661 µs | 413 µs | 769 µs |
+| `render_html_to_pdf_response` inline | **435 µs** | 433 µs | 398 µs | 493 µs |
 
 #### Multi-page rendering (3+ A4 pages)
 
 | Document | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| Simple HTML (1 page) | **166 µs** | 159 µs | 157 µs | 219 µs |
-| Long report (~3 pages, 12 sections) | **18.8 ms** | 18.6 ms | 17.2 ms | 21.2 ms |
-| Invoice table (1 page) | **1.12 ms** | 1.09 ms | 945 µs | 1.42 ms |
-| `render_pdf_async` long report | **21.8 ms** | 19.2 ms | 18.0 ms | 35.7 ms |
+| Simple HTML (1 page) | **203 µs** | 192 µs | 183 µs | 311 µs |
+| Long report (~3 pages, 12 sections) | **25.2 ms** | 24.2 ms | 22.9 ms | 34.8 ms |
+| Invoice table (1 page) | **1.29 ms** | 1.18 ms | 1.11 ms | 1.89 ms |
+| `render_pdf_async` long report | **25.4 ms** | 24.3 ms | 22.0 ms | 31.9 ms |
 
 #### Concurrent load (`render_pdf_async` via `asyncio.gather`)
 
 | Concurrency | Mean total | p95 total | Throughput |
 |---|---|---|---|
-| 1 | 1.29 ms | 2.72 ms | **774 req/s** |
-| 5 | 5.28 ms | 14.3 ms | **947 req/s** |
-| 10 | 7.06 ms | 7.67 ms | **1 417 req/s** |
-| 25 | 16.0 ms | 21.3 ms | **1 559 req/s** |
-| 50 | 20.0 ms | 23.7 ms | **2 501 req/s** |
+| 1 | 883 µs | 1.38 ms | **1 132 req/s** |
+| 5 | 2.34 ms | 3.81 ms | **2 137 req/s** |
+| 10 | 3.36 ms | 4.67 ms | **2 979 req/s** |
+| 25 | 10.5 ms | 19.8 ms | **2 377 req/s** |
+| 50 | 10.0 ms | 10.9 ms | **5 006 req/s** |
 
 Reproduce:
 

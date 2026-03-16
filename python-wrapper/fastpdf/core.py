@@ -160,6 +160,9 @@ class RenderOptions:
                 "Use a name like 'A4' or a (width_mm, height_mm) tuple."
             )
 
+        # Orientation
+        r.orientation = self.orientation
+
         # Margins (Rust expects a list [top, right, bottom, left])
         r.margins = [self.margin_top, self.margin_right, self.margin_bottom, self.margin_left]
 
@@ -340,18 +343,15 @@ class PdfEngine:
         """
         opts = options or self._default_options
 
-        if css:
-            html = f"<style>{css}</style>\n{html}"
-
         rust_opts = opts._to_rust()
         try:
-            pdf_bytes = self._rust_engine.render(html, options=rust_opts)
+            rust_doc = self._rust_engine.render(html, css=css, options=rust_opts)
         except Exception as e:
             raise _convert_rust_error(e) from e
 
         return PdfDocument(
-            data=pdf_bytes,
-            page_count=1,  # TODO: get from rust engine
+            data=rust_doc.to_bytes(),
+            page_count=rust_doc.page_count,
             title=opts.title,
         )
 
@@ -434,19 +434,36 @@ class PdfEngine:
             doc_pairs.append((html, css))
 
         try:
-            results = self._rust_engine.batch_render(doc_pairs, options=rust_opts)
+            results = self._rust_engine.batch_render(
+                doc_pairs, options=rust_opts, parallel=parallel
+            )
         except Exception as e:
             raise _convert_rust_error(e) from e
 
         return [
-            PdfDocument(data=pdf_bytes, page_count=1, title=opts.title)
-            for pdf_bytes in results
+            PdfDocument(
+                data=rust_doc.to_bytes(),
+                page_count=rust_doc.page_count,
+                title=opts.title,
+            )
+            for rust_doc in results
         ]
 
 
 # ---------------------------------------------------------------------------
 # Module-level convenience functions
 # ---------------------------------------------------------------------------
+
+# Lazy singleton engine for module-level functions (avoids re-creating
+# FontCache / ImageCache on every call).
+_default_engine: Optional[PdfEngine] = None
+
+
+def _get_default_engine() -> PdfEngine:
+    global _default_engine
+    if _default_engine is None:
+        _default_engine = PdfEngine()
+    return _default_engine
 
 
 def render_pdf(
@@ -478,15 +495,10 @@ def render_pdf(
     if not _ENGINE_AVAILABLE:
         raise FastPdfError("FastPDF native engine not available.")
 
-    if css:
-        html = f"<style>{css}</style>\n{html}"
-
     try:
-        if options:
-            rust_opts = options._to_rust()
-            return _rust_render_html_to_pdf_bytes(html, options=rust_opts)
-        else:
-            return _rust_render_html_to_pdf_bytes(html)
+        engine = _get_default_engine()
+        doc = engine.render(html, css=css, options=options)
+        return doc.to_bytes()
     except FastPdfError:
         raise
     except Exception as e:
@@ -582,7 +594,7 @@ def batch_render(
     list of bytes
         PDF bytes for each input.
     """
-    engine = PdfEngine(default_options=options or RenderOptions())
+    engine = _get_default_engine()
     docs = engine.batch_render(items, options=options, parallel=parallel)
     return [doc.to_bytes() for doc in docs]
 

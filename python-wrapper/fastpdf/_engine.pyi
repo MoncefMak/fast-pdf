@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 
 class RenderOptions:
     page_size: str
+    orientation: str
     margins: List[float]
     title: str
     author: str
@@ -16,6 +17,7 @@ class RenderOptions:
     def __init__(
         self,
         page_size: str = "a4",
+        orientation: str = "portrait",
         margins: Optional[List[float]] = None,
         title: str = "",
         author: str = "",
@@ -42,7 +44,7 @@ class PdfEngine:
         html: str,
         css: Optional[str] = None,
         options: Optional[RenderOptions] = None,
-    ) -> bytes: ...
+    ) -> PdfDocument: ...
     def render_to_file(
         self,
         html: str,
@@ -54,7 +56,8 @@ class PdfEngine:
         self,
         documents: List[Tuple[str, str]],
         options: Optional[RenderOptions] = None,
-    ) -> List[bytes]: ...
+        parallel: bool = True,
+    ) -> List[PdfDocument]: ...
     def register_font(
         self,
         family: str,
@@ -75,9 +78,13 @@ def render_html_to_pdf_bytes(
     html: str,
     css: Optional[str] = None,
     options: Optional[RenderOptions] = None,
-) -> bytes: ...
+) -> PdfDocument: ...
 def batch_render(
     documents: List[Tuple[str, str]],
+    options: Optional[RenderOptions] = None,
+    parallel: bool = True,
+) -> List[PdfDocument]: ...
+def get_version() -> str: ...
     options: Optional[RenderOptions] = None,
 ) -> List[bytes]: ...
 def get_version() -> str: ...

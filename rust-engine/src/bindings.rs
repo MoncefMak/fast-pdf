@@ -26,6 +26,9 @@ pub struct RenderOptions {
     /// Page size: "a4", "letter", "legal", or custom "WxH" in mm.
     #[pyo3(get, set)]
     pub page_size: String,
+    /// Page orientation: "portrait" or "landscape".
+    #[pyo3(get, set)]
+    pub orientation: String,
     /// Page margins in mm [top, right, bottom, left].
     #[pyo3(get, set)]
     pub margins: Vec<f64>,
@@ -54,6 +57,7 @@ impl RenderOptions {
     #[new]
     #[pyo3(signature = (
         page_size = "a4".to_string(),
+        orientation = "portrait".to_string(),
         margins = vec![20.0, 15.0, 20.0, 15.0],
         title = String::new(),
         author = String::new(),
@@ -64,6 +68,7 @@ impl RenderOptions {
     ))]
     fn new(
         page_size: String,
+        orientation: String,
         margins: Vec<f64>,
         title: String,
         author: String,
@@ -74,6 +79,7 @@ impl RenderOptions {
     ) -> Self {
         Self {
             page_size,
+            orientation,
             margins,
             title,
             author,
@@ -86,22 +92,39 @@ impl RenderOptions {
 }
 
 impl RenderOptions {
-    fn to_page_layout(&self) -> PageLayout {
+    fn to_page_layout(&self) -> Result<PageLayout, FastPdfError> {
         let size = match self.page_size.to_lowercase().as_str() {
             "a4" => PageSize::a4(),
+            "a3" => PageSize::a3(),
+            "a5" => PageSize::a5(),
             "letter" => PageSize::letter(),
             "legal" => PageSize::legal(),
+            "tabloid" => PageSize::tabloid(),
             custom => {
                 // Parse "WxH" format in mm
                 let parts: Vec<&str> = custom.split('x').collect();
                 if parts.len() == 2 {
-                    let w = parts[0].parse::<f64>().unwrap_or(210.0);
-                    let h = parts[1].parse::<f64>().unwrap_or(297.0);
+                    let w = parts[0].parse::<f64>().map_err(|_| {
+                        FastPdfError::Config(format!("Invalid page width in '{}'", custom))
+                    })?;
+                    let h = parts[1].parse::<f64>().map_err(|_| {
+                        FastPdfError::Config(format!("Invalid page height in '{}'", custom))
+                    })?;
                     PageSize::custom(w, h)
                 } else {
-                    PageSize::a4()
+                    return Err(FastPdfError::Config(format!(
+                        "Unknown page size '{}'. Use 'a4', 'letter', 'legal', or 'WxH' in mm.",
+                        custom
+                    )));
                 }
             }
+        };
+
+        // Apply orientation: swap width and height for landscape
+        let size = if self.orientation.to_lowercase() == "landscape" {
+            PageSize::custom(size.to_mm().1, size.to_mm().0)
+        } else {
+            size
         };
 
         let margins = if self.margins.len() == 4 {
@@ -128,7 +151,7 @@ impl RenderOptions {
             layout.footer_height = 40.0;
         }
 
-        layout
+        Ok(layout)
     }
 
     fn to_pdf_config(&self) -> PdfConfig {
@@ -144,6 +167,7 @@ impl Default for RenderOptions {
     fn default() -> Self {
         Self::new(
             "a4".to_string(),
+            "portrait".to_string(),
             vec![20.0, 15.0, 20.0, 15.0],
             String::new(),
             String::new(),
@@ -191,77 +215,103 @@ impl PdfEngine {
         self.image_cache.set_base_path(path);
     }
 
-    /// Render HTML + CSS to PDF bytes.
+    /// Render HTML + CSS to a PdfDocument (with page count).
     #[pyo3(signature = (html, css = None, options = None))]
-    fn render<'py>(
+    fn render(
         &self,
-        py: Python<'py>,
+        py: Python<'_>,
         html: &str,
         css: Option<&str>,
         options: Option<&RenderOptions>,
-    ) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self.render_internal(html, css.unwrap_or(""), options)?;
-        Ok(PyBytes::new_bound(py, &bytes))
+    ) -> PyResult<PdfDocument> {
+        let default_opts = RenderOptions::default();
+        let opts = options.unwrap_or(&default_opts);
+        let html = html.to_owned();
+        let css = css.unwrap_or("").to_owned();
+        let opts_owned = opts.clone();
+        let font_cache = self.font_cache.clone();
+        let image_cache = self.image_cache.clone();
+
+        // Release the GIL during the CPU-heavy rendering pipeline
+        let result = py.allow_threads(move || {
+            render_pipeline(&html, &css, &opts_owned, Some(font_cache), Some(image_cache))
+        });
+        let render_result = result.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        Ok(PdfDocument {
+            data: render_result.bytes,
+            page_count: render_result.page_count,
+        })
     }
 
     /// Render HTML + CSS and save to a file.
     #[pyo3(signature = (html, output, css = None, options = None))]
     fn render_to_file(
         &self,
+        py: Python<'_>,
         html: &str,
         output: &str,
         css: Option<&str>,
         options: Option<&RenderOptions>,
     ) -> PyResult<()> {
-        let bytes = self.render_internal(html, css.unwrap_or(""), options)?;
-        std::fs::write(output, bytes)
-            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))
+        let default_opts = RenderOptions::default();
+        let opts = options.unwrap_or(&default_opts);
+        let html = html.to_owned();
+        let css = css.unwrap_or("").to_owned();
+        let opts_owned = opts.clone();
+        let font_cache = self.font_cache.clone();
+        let image_cache = self.image_cache.clone();
+        let output = output.to_owned();
+
+        // Release the GIL during the CPU-heavy rendering pipeline
+        py.allow_threads(move || -> PyResult<()> {
+            let render_result = render_pipeline(&html, &css, &opts_owned, Some(font_cache), Some(image_cache))
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+            std::fs::write(&output, render_result.bytes)
+                .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))
+        })
     }
 
     /// Batch render multiple documents in parallel.
-    #[pyo3(signature = (documents, options = None))]
-    fn batch_render<'py>(
+    #[pyo3(signature = (documents, options = None, parallel = true))]
+    fn batch_render(
         &self,
-        py: Python<'py>,
+        py: Python<'_>,
         documents: Vec<(String, String)>, // (html, css) pairs
         options: Option<&RenderOptions>,
-    ) -> PyResult<Vec<Bound<'py, PyBytes>>> {
+        parallel: bool,
+    ) -> PyResult<Vec<PdfDocument>> {
         let font_cache = self.font_cache.clone();
+        let image_cache = self.image_cache.clone();
         // Clone options before releasing the GIL (Python refs can't cross thread boundaries)
         let opts_owned: RenderOptions = options
             .map(|o| o.clone())
             .unwrap_or_default();
 
-        // Release the GIL during the entire Rayon parallel workload
-        let results: Vec<Result<Vec<u8>, FastPdfError>> = py.allow_threads(|| {
-            documents
-                .par_iter()
-                .map(|(html, css)| render_pipeline(html, css, &opts_owned, Some(font_cache.clone())))
-                .collect()
+        // Release the GIL during the CPU-heavy workload
+        let results: Vec<Result<RenderResult, FastPdfError>> = py.allow_threads(|| {
+            if parallel {
+                documents
+                    .par_iter()
+                    .map(|(html, css)| render_pipeline(html, css, &opts_owned, Some(font_cache.clone()), Some(image_cache.clone())))
+                    .collect()
+            } else {
+                documents
+                    .iter()
+                    .map(|(html, css)| render_pipeline(html, css, &opts_owned, Some(font_cache.clone()), Some(image_cache.clone())))
+                    .collect()
+            }
         });
 
         results
             .into_iter()
             .map(|r| {
-                let bytes = r.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-                Ok(PyBytes::new_bound(py, &bytes))
+                let rr = r.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+                Ok(PdfDocument {
+                    data: rr.bytes,
+                    page_count: rr.page_count,
+                })
             })
             .collect()
-    }
-}
-
-impl PdfEngine {
-    fn render_internal(
-        &self,
-        html: &str,
-        css: &str,
-        options: Option<&RenderOptions>,
-    ) -> PyResult<Vec<u8>> {
-        let default_opts = RenderOptions::default();
-        let opts = options.unwrap_or(&default_opts);
-
-        render_pipeline(html, css, opts, Some(self.font_cache.clone()))
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }
 
@@ -298,13 +348,20 @@ impl PdfDocument {
     }
 }
 
+/// Result of a rendering pipeline run.
+struct RenderResult {
+    bytes: Vec<u8>,
+    page_count: usize,
+}
+
 /// The core rendering pipeline.
 fn render_pipeline(
     html: &str,
     css: &str,
     options: &RenderOptions,
     font_cache: Option<Arc<FontCache>>,
-) -> Result<Vec<u8>, FastPdfError> {
+    _image_cache: Option<Arc<ImageCache>>,
+) -> Result<RenderResult, FastPdfError> {
     // 1. Parse HTML
     let dom = HtmlParser::parse_fragment(html)?;
 
@@ -331,12 +388,13 @@ fn render_pipeline(
     }
 
     // 4. Layout
-    let page_layout = options.to_page_layout();
+    let page_layout = options.to_page_layout()?;
     let mut engine = LayoutEngine::new(page_layout);
     if let Some(ref cache) = font_cache {
         engine = engine.with_font_cache(Arc::clone(cache));
     }
     let pages = engine.layout(&dom, &stylesheets)?;
+    let page_count = pages.len();
 
     // 5. Render to paint commands
     let renderer = Renderer::new();
@@ -350,7 +408,7 @@ fn render_pipeline(
     }
     let bytes = generator.generate(&pages, &page_commands)?;
 
-    Ok(bytes)
+    Ok(RenderResult { bytes, page_count })
 }
 
 // ── Standalone Python functions ──
@@ -359,6 +417,7 @@ fn render_pipeline(
 #[pyfunction]
 #[pyo3(signature = (html, output, css = None, options = None))]
 pub fn render_html_to_pdf(
+    py: Python<'_>,
     html: &str,
     output: &str,
     css: Option<&str>,
@@ -366,58 +425,81 @@ pub fn render_html_to_pdf(
 ) -> PyResult<()> {
     let default_opts = RenderOptions::default();
     let opts = options.unwrap_or(&default_opts);
+    let html = html.to_owned();
+    let css = css.unwrap_or("").to_owned();
+    let opts_owned = opts.clone();
+    let output = output.to_owned();
 
-    let bytes = render_pipeline(html, css.unwrap_or(""), opts, None)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-
-    std::fs::write(output, bytes)
-        .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))
+    py.allow_threads(move || -> PyResult<()> {
+        let result = render_pipeline(&html, &css, &opts_owned, None, None)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        std::fs::write(&output, result.bytes)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))
+    })
 }
 
-/// Render HTML to PDF and return as bytes.
+/// Render HTML to PDF and return a PdfDocument.
 #[pyfunction]
 #[pyo3(signature = (html, css = None, options = None))]
-pub fn render_html_to_pdf_bytes<'py>(
-    py: Python<'py>,
+pub fn render_html_to_pdf_bytes(
+    py: Python<'_>,
     html: &str,
     css: Option<&str>,
     options: Option<&RenderOptions>,
-) -> PyResult<Bound<'py, PyBytes>> {
+) -> PyResult<PdfDocument> {
     let default_opts = RenderOptions::default();
     let opts = options.unwrap_or(&default_opts);
+    let html = html.to_owned();
+    let css = css.unwrap_or("").to_owned();
+    let opts_owned = opts.clone();
 
-    let bytes = render_pipeline(html, css.unwrap_or(""), opts, None)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let result = py.allow_threads(move || {
+        render_pipeline(&html, &css, &opts_owned, None, None)
+    }).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-    Ok(PyBytes::new_bound(py, &bytes))
+    Ok(PdfDocument {
+        data: result.bytes,
+        page_count: result.page_count,
+    })
 }
 
 /// Render multiple documents in parallel.
 #[pyfunction]
-#[pyo3(signature = (documents, options = None))]
-pub fn batch_render<'py>(
-    py: Python<'py>,
+#[pyo3(signature = (documents, options = None, parallel = true))]
+pub fn batch_render(
+    py: Python<'_>,
     documents: Vec<(String, String)>,
     options: Option<&RenderOptions>,
-) -> PyResult<Vec<Bound<'py, PyBytes>>> {
+    parallel: bool,
+) -> PyResult<Vec<PdfDocument>> {
     // Clone options before releasing the GIL (Python refs can't cross thread boundaries)
     let opts_owned: RenderOptions = options
         .map(|o| o.clone())
         .unwrap_or_default();
 
-    // Release the GIL during the entire Rayon parallel workload
-    let results: Vec<Result<Vec<u8>, FastPdfError>> = py.allow_threads(|| {
-        documents
-            .par_iter()
-            .map(|(html, css)| render_pipeline(html, css, &opts_owned, None))
-            .collect()
+    // Release the GIL during the CPU-heavy workload
+    let results: Vec<Result<RenderResult, FastPdfError>> = py.allow_threads(|| {
+        if parallel {
+            documents
+                .par_iter()
+                .map(|(html, css)| render_pipeline(html, css, &opts_owned, None, None))
+                .collect()
+        } else {
+            documents
+                .iter()
+                .map(|(html, css)| render_pipeline(html, css, &opts_owned, None, None))
+                .collect()
+        }
     });
 
     results
         .into_iter()
         .map(|r| {
-            let bytes = r.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-            Ok(PyBytes::new_bound(py, &bytes))
+            let rr = r.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+            Ok(PdfDocument {
+                data: rr.bytes,
+                page_count: rr.page_count,
+            })
         })
         .collect()
 }

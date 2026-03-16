@@ -7,52 +7,52 @@
 
 | Endpoint | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| `GET /simple.pdf  (plain HTML)` | 1.61 ms | 1.54 ms | 1.28 ms | 2.02 ms |
-| `GET /styled.pdf  (CSS styled)` | 1.61 ms | 1.62 ms | 1.30 ms | 1.92 ms |
-| `GET /invoice.pdf (10-row table)` | 2.40 ms | 2.40 ms | 2.02 ms | 2.73 ms |
-| `GET /async.pdf   (async helper)` | 1.88 ms | 1.84 ms | 1.49 ms | 2.48 ms |
-| `GET /tailwind.pdf (Tailwind CSS)` | 2.04 ms | 1.93 ms | 1.69 ms | 2.55 ms |
+| `GET /simple.pdf  (plain HTML)` | 1.53 ms | 1.49 ms | 1.18 ms | 1.89 ms |
+| `GET /styled.pdf  (CSS styled)` | 2.33 ms | 2.26 ms | 1.85 ms | 2.70 ms |
+| `GET /invoice.pdf (10-row table)` | 3.78 ms | 3.69 ms | 3.43 ms | 4.31 ms |
+| `GET /async.pdf   (async helper)` | 2.12 ms | 2.06 ms | 1.57 ms | 2.67 ms |
+| `GET /tailwind.pdf (Tailwind CSS)` | 2.24 ms | 2.13 ms | 1.62 ms | 2.83 ms |
 
 ### FastAPI — `render_pdf_async` (asyncio, thread-pool dispatch)
 
 | Operation | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| `render_pdf_async (simple)` | 352 µs | 348 µs | 244 µs | 442 µs |
-| `render_pdf_async (styled)` | 576 µs | 558 µs | 385 µs | 845 µs |
-| `render_pdf_async (invoice)` | 1.37 ms | 1.28 ms | 1.07 ms | 1.82 ms |
-| `batch_render_async 5 docs` | 1.60 ms | 1.58 ms | 1.30 ms | 2.03 ms |
-| `batch_render_async 10 docs` | 1.49 ms | 1.36 ms | 1.06 ms | 2.47 ms |
+| `render_pdf_async (simple)` | 389 µs | 360 µs | 280 µs | 644 µs |
+| `render_pdf_async (styled)` | 662 µs | 608 µs | 492 µs | 1.01 ms |
+| `render_pdf_async (invoice)` | 1.55 ms | 1.50 ms | 1.32 ms | 1.83 ms |
+| `batch_render_async 5 docs` | 2.25 ms | 2.21 ms | 1.64 ms | 3.77 ms |
+| `batch_render_async 10 docs` | 1.61 ms | 1.55 ms | 1.16 ms | 2.51 ms |
 
 ### Django — `render_pdf` + contrib helpers (in-process)
 
 | Operation | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| `render_pdf (simple)` | 179 µs | 165 µs | 156 µs | 242 µs |
-| `render_pdf (styled CSS)` | 318 µs | 307 µs | 297 µs | 392 µs |
-| `render_pdf (invoice table)` | 992 µs | 970 µs | 904 µs | 1.17 ms |
-| `render_pdf (Tailwind)` | 722 µs | 671 µs | 618 µs | 1.04 ms |
-| `render_html_to_pdf_response (simple)` | 200 µs | 190 µs | 181 µs | 266 µs |
-| `render_html_to_pdf_response (styled)` | 339 µs | 325 µs | 318 µs | 388 µs |
-| `render_html_to_pdf_response (inline)` | 362 µs | 342 µs | 317 µs | 445 µs |
+| `render_pdf (simple)` | 215 µs | 204 µs | 189 µs | 295 µs |
+| `render_pdf (styled CSS)` | 472 µs | 428 µs | 386 µs | 669 µs |
+| `render_pdf (invoice table)` | 1.26 ms | 1.24 ms | 1.14 ms | 1.49 ms |
+| `render_pdf (Tailwind)` | 746 µs | 834 µs | 520 µs | 919 µs |
+| `render_html_to_pdf_response (simple)` | 352 µs | 330 µs | 304 µs | 457 µs |
+| `render_html_to_pdf_response (styled)` | 631 µs | 661 µs | 413 µs | 769 µs |
+| `render_html_to_pdf_response (inline)` | 435 µs | 433 µs | 398 µs | 493 µs |
 
 ### Multi-page rendering
 
 | Document | Mean | Median | Min | p95 |
 |---|---|---|---|---|
-| `render_pdf (simple, 1 page)` | 166 µs | 159 µs | 157 µs | 219 µs |
-| `render_pdf (multi-page, ~3 pages)` | 18.81 ms | 18.64 ms | 17.23 ms | 21.22 ms |
-| `render_pdf (invoice, 1 page)` | 1.12 ms | 1.09 ms | 945 µs | 1.42 ms |
-| `render_pdf_async (multi-page)` | 21.77 ms | 19.19 ms | 18.00 ms | 35.67 ms |
+| `render_pdf (simple, 1 page)` | 203 µs | 192 µs | 183 µs | 311 µs |
+| `render_pdf (multi-page, ~3 pages)` | 25.22 ms | 24.17 ms | 22.88 ms | 34.77 ms |
+| `render_pdf (invoice, 1 page)` | 1.29 ms | 1.18 ms | 1.11 ms | 1.89 ms |
+| `render_pdf_async (multi-page)` | 25.35 ms | 24.32 ms | 22.00 ms | 31.87 ms |
 
 ### Concurrent load (`render_pdf_async` via `asyncio.gather`)
 
 | Concurrency | Mean total | p95 total | Throughput |
 |---|---|---|---|
-| 1 | 1.29 ms | 2.72 ms | 773.9 req/s |
-| 5 | 5.28 ms | 14.26 ms | 946.9 req/s |
-| 10 | 7.06 ms | 7.67 ms | 1416.5 req/s |
-| 25 | 16.04 ms | 21.26 ms | 1558.7 req/s |
-| 50 | 20.00 ms | 23.68 ms | 2500.6 req/s |
+| 1 | 883 µs | 1.38 ms | 1132.1 req/s |
+| 5 | 2.34 ms | 3.81 ms | 2136.6 req/s |
+| 10 | 3.36 ms | 4.67 ms | 2979.1 req/s |
+| 25 | 10.52 ms | 19.76 ms | 2376.7 req/s |
+| 50 | 9.99 ms | 10.87 ms | 5006.0 req/s |
 
 > 1 warm-up run + 30 timed iterations per case. Mean +/- stdev reported.
 > Reproduce: `python benchmarks/benchmark_integrations.py`

@@ -40,6 +40,30 @@ impl PageSize {
         }
     }
 
+    /// A3 paper (297mm × 420mm).
+    pub fn a3() -> Self {
+        Self {
+            width: 297.0 * 96.0 / 25.4,
+            height: 420.0 * 96.0 / 25.4,
+        }
+    }
+
+    /// A5 paper (148mm × 210mm).
+    pub fn a5() -> Self {
+        Self {
+            width: 148.0 * 96.0 / 25.4,
+            height: 210.0 * 96.0 / 25.4,
+        }
+    }
+
+    /// US Tabloid (11" × 17").
+    pub fn tabloid() -> Self {
+        Self {
+            width: 11.0 * 96.0,
+            height: 17.0 * 96.0,
+        }
+    }
+
     /// Custom page size.
     pub fn custom(width_mm: f64, height_mm: f64) -> Self {
         Self {

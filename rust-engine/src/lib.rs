@@ -21,6 +21,9 @@ use pyo3::prelude::*;
 /// Maturin maps this to fastpdf._engine
 #[pymodule]
 fn _engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Initialise env_logger so log macros produce output when RUST_LOG is set
+    let _ = env_logger::try_init();
+
     // Register Python-facing classes and functions
     m.add_class::<bindings::PdfEngine>()?;
     m.add_class::<bindings::PdfDocument>()?;

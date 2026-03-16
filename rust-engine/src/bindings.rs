@@ -363,7 +363,7 @@ pub struct PdfDocument {
 impl PdfDocument {
     /// Get the PDF as bytes.
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.data)
+        PyBytes::new(py, &self.data)
     }
 
     /// Save the PDF to a file.

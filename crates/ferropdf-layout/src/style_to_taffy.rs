@@ -13,12 +13,27 @@ pub fn convert(style: &ComputedStyle) -> taffy::Style {
             ferropdf_core::Display::Flex        => Display::Flex,
             ferropdf_core::Display::Grid        => Display::Grid,
             ferropdf_core::Display::None        => Display::None,
-            // Inline et InlineBlock traités comme Block pour le PDF
+            // Table → flex column so rows stack vertically
+            ferropdf_core::Display::Table       => Display::Flex,
+            // Table row (and row groups) → flex row so cells sit side by side
+            ferropdf_core::Display::TableRow
+            | ferropdf_core::Display::TableHeaderGroup
+            | ferropdf_core::Display::TableRowGroup
+            | ferropdf_core::Display::TableFooterGroup => Display::Flex,
+            // Table cells → block (flex_grow makes them share space)
+            ferropdf_core::Display::TableCell   => Display::Block,
+            // Inline, InlineBlock, ListItem → Block for PDF
             _                                   => Display::Block,
         },
 
         size: Size {
-            width:  length_to_dim(&style.width),
+            width: match style.display {
+                // Tables default to 100% width if no explicit width set
+                ferropdf_core::Display::Table if style.width == Length::Auto || style.width == Length::None => {
+                    Dimension::Percent(1.0)
+                },
+                _ => length_to_dim(&style.width),
+            },
             height: length_to_dim(&style.height),
         },
         min_size: Size {
@@ -50,11 +65,21 @@ pub fn convert(style: &ComputedStyle) -> taffy::Style {
             left:   lpa(&style.margin[3]),
         },
 
-        flex_direction: match style.flex_direction {
-            ferropdf_core::FlexDirection::Row           => FlexDirection::Row,
-            ferropdf_core::FlexDirection::Column        => FlexDirection::Column,
-            ferropdf_core::FlexDirection::RowReverse    => FlexDirection::RowReverse,
-            ferropdf_core::FlexDirection::ColumnReverse => FlexDirection::ColumnReverse,
+        flex_direction: match style.display {
+            // Table and row groups: children (rows) stack vertically
+            ferropdf_core::Display::Table
+            | ferropdf_core::Display::TableHeaderGroup
+            | ferropdf_core::Display::TableRowGroup
+            | ferropdf_core::Display::TableFooterGroup => FlexDirection::Column,
+            // Table row: cells go side by side
+            ferropdf_core::Display::TableRow => FlexDirection::Row,
+            // Everything else: use the CSS flex-direction
+            _ => match style.flex_direction {
+                ferropdf_core::FlexDirection::Row           => FlexDirection::Row,
+                ferropdf_core::FlexDirection::Column        => FlexDirection::Column,
+                ferropdf_core::FlexDirection::RowReverse    => FlexDirection::RowReverse,
+                ferropdf_core::FlexDirection::ColumnReverse => FlexDirection::ColumnReverse,
+            },
         },
         flex_wrap: match style.flex_wrap {
             ferropdf_core::FlexWrap::NoWrap      => FlexWrap::NoWrap,
@@ -76,13 +101,78 @@ pub fn convert(style: &ComputedStyle) -> taffy::Style {
             ferropdf_core::AlignItems::Center    => AlignItems::Center,
             ferropdf_core::AlignItems::Baseline  => AlignItems::Baseline,
         }),
-        flex_grow:   style.flex_grow,
-        flex_shrink: style.flex_shrink,
-        flex_basis:  length_to_dim(&style.flex_basis),
+        flex_grow: match style.display {
+            ferropdf_core::Display::TableCell => 1.0,
+            _ => style.flex_grow,
+        },
+        flex_shrink: match style.display {
+            ferropdf_core::Display::TableCell => 1.0,
+            _ => style.flex_shrink,
+        },
+        flex_basis: match style.display {
+            // Auto lets cells size to content first, then grow/shrink to fill
+            ferropdf_core::Display::TableCell => Dimension::Auto,
+            _ => length_to_dim(&style.flex_basis),
+        },
         gap: Size {
             width:  lp(&style.column_gap),
             height: lp(&style.row_gap),
         },
+
+        ..Default::default()
+    }
+}
+
+/// Convert a `<table>` ComputedStyle into a CSS Grid taffy::Style.
+///
+/// The table becomes a grid with `num_cols` columns, each sized `auto` (min-content/max-content).
+/// This lets Taffy handle column alignment natively instead of our manual pre-pass.
+pub fn convert_table_to_grid(style: &ComputedStyle, num_cols: usize) -> taffy::Style {
+    use taffy::style::{TrackSizingFunction, MinTrackSizingFunction, MaxTrackSizingFunction};
+    use taffy::geometry::MinMax;
+
+    // Each column: minmax(min-content, 1fr) — fills available space equally
+    let col_template: Vec<TrackSizingFunction> = (0..num_cols)
+        .map(|_| {
+            TrackSizingFunction::Single(MinMax {
+                min: MinTrackSizingFunction::MinContent,
+                max: MaxTrackSizingFunction::Fraction(1.0),
+            })
+        })
+        .collect();
+
+    taffy::Style {
+        display: Display::Grid,
+
+        size: Size {
+            width: if style.width == Length::Auto || style.width == Length::None {
+                Dimension::Percent(1.0)
+            } else {
+                length_to_dim(&style.width)
+            },
+            height: length_to_dim(&style.height),
+        },
+
+        padding: taffy::Rect {
+            top:    lp(&style.padding[0]),
+            right:  lp(&style.padding[1]),
+            bottom: lp(&style.padding[2]),
+            left:   lp(&style.padding[3]),
+        },
+        border: taffy::Rect {
+            top:    LengthPercentage::Length(style.border_top.width),
+            right:  LengthPercentage::Length(style.border_right.width),
+            bottom: LengthPercentage::Length(style.border_bottom.width),
+            left:   LengthPercentage::Length(style.border_left.width),
+        },
+        margin: taffy::Rect {
+            top:    lpa(&style.margin[0]),
+            right:  lpa(&style.margin[1]),
+            bottom: lpa(&style.margin[2]),
+            left:   lpa(&style.margin[3]),
+        },
+
+        grid_template_columns: col_template,
 
         ..Default::default()
     }

@@ -1,12 +1,16 @@
 use ferropdf_core::ComputedStyle;
 
-/// Estimate text width based on font size and character count.
-/// This is a simplified measurement — cosmic-text will be used for proper shaping later.
+/// Measure text width using Helvetica AFM glyph widths.
+/// Widths are in 1/1000 of a unit; multiply by font_size/1000 to get px.
 pub fn estimate_text_width(text: &str, style: &ComputedStyle) -> f32 {
-    // Average character width ≈ 0.6 * font_size for most fonts
-    let avg_char_width = style.font_size * 0.6;
+    let scale = style.font_size / 1000.0;
+    let bold = style.font_weight.is_bold();
+    let mut width: f32 = 0.0;
+    for c in text.chars() {
+        width += glyph_width(c, bold) as f32 * scale;
+    }
     let char_count = text.chars().count() as f32;
-    char_count * avg_char_width + style.letter_spacing * (char_count - 1.0).max(0.0)
+    width + style.letter_spacing * (char_count - 1.0).max(0.0)
 }
 
 /// Estimate the height needed for text given a container width.
@@ -18,4 +22,109 @@ pub fn estimate_text_height(text: &str, style: &ComputedStyle, available_width: 
     let text_width = estimate_text_width(text, style);
     let lines = (text_width / available_width.max(1.0)).ceil().max(1.0);
     lines * style.line_height
+}
+
+/// Helvetica glyph widths from the standard AFM data.
+/// Returns width in 1/1000 units.
+fn glyph_width(c: char, bold: bool) -> u16 {
+    if bold {
+        helvetica_bold_width(c)
+    } else {
+        helvetica_width(c)
+    }
+}
+
+/// Helvetica (regular) AFM widths for common characters.
+fn helvetica_width(c: char) -> u16 {
+    match c {
+        ' ' => 278,
+        '!' => 278, '"' => 355, '#' => 556, '$' => 556, '%' => 889,
+        '&' => 667, '\'' => 191, '(' => 333, ')' => 333, '*' => 389,
+        '+' => 584, ',' => 278, '-' => 333, '.' => 278, '/' => 278,
+        '0' => 556, '1' => 556, '2' => 556, '3' => 556, '4' => 556,
+        '5' => 556, '6' => 556, '7' => 556, '8' => 556, '9' => 556,
+        ':' => 278, ';' => 278, '<' => 584, '=' => 584, '>' => 584,
+        '?' => 556, '@' => 1015,
+        'A' => 667, 'B' => 667, 'C' => 722, 'D' => 722, 'E' => 611,
+        'F' => 556, 'G' => 778, 'H' => 722, 'I' => 278, 'J' => 500,
+        'K' => 667, 'L' => 556, 'M' => 833, 'N' => 722, 'O' => 778,
+        'P' => 667, 'Q' => 778, 'R' => 722, 'S' => 667, 'T' => 611,
+        'U' => 722, 'V' => 667, 'W' => 944, 'X' => 667, 'Y' => 667,
+        'Z' => 611,
+        '[' => 278, '\\' => 278, ']' => 278, '^' => 469, '_' => 556,
+        '`' => 333,
+        'a' => 556, 'b' => 556, 'c' => 500, 'd' => 556, 'e' => 556,
+        'f' => 278, 'g' => 556, 'h' => 556, 'i' => 222, 'j' => 222,
+        'k' => 500, 'l' => 222, 'm' => 833, 'n' => 556, 'o' => 556,
+        'p' => 556, 'q' => 556, 'r' => 333, 's' => 500, 't' => 278,
+        'u' => 556, 'v' => 500, 'w' => 722, 'x' => 500, 'y' => 500,
+        'z' => 500,
+        '{' => 334, '|' => 260, '}' => 334, '~' => 584,
+        // Common accented chars (WinAnsi)
+        'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => 667,
+        'Æ' => 1000, 'Ç' => 722,
+        'È' | 'É' | 'Ê' | 'Ë' => 611,
+        'Ì' | 'Í' | 'Î' | 'Ï' => 278,
+        'Ñ' => 722, 'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' => 778,
+        'Ù' | 'Ú' | 'Û' | 'Ü' => 722, 'Ý' => 667,
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 556,
+        'æ' => 889, 'ç' => 500,
+        'è' | 'é' | 'ê' | 'ë' => 556,
+        'ì' | 'í' | 'î' | 'ï' => 278,
+        'ñ' => 556, 'ò' | 'ó' | 'ô' | 'õ' | 'ö' => 556,
+        'ù' | 'ú' | 'û' | 'ü' => 556, 'ý' | 'ÿ' => 500,
+        '€' => 556,
+        '–' => 556, '—' => 1000,
+        '\u{2018}' | '\u{2019}' => 222, '\u{201c}' | '\u{201d}' => 333,
+        '•' => 350, '…' => 1000,
+        // Fallback: average Helvetica width
+        _ => 556,
+    }
+}
+
+/// Helvetica-Bold AFM widths for common characters.
+fn helvetica_bold_width(c: char) -> u16 {
+    match c {
+        ' ' => 278,
+        '!' => 333, '"' => 474, '#' => 556, '$' => 556, '%' => 889,
+        '&' => 722, '\'' => 238, '(' => 333, ')' => 333, '*' => 389,
+        '+' => 584, ',' => 278, '-' => 333, '.' => 278, '/' => 278,
+        '0' => 556, '1' => 556, '2' => 556, '3' => 556, '4' => 556,
+        '5' => 556, '6' => 556, '7' => 556, '8' => 556, '9' => 556,
+        ':' => 333, ';' => 333, '<' => 584, '=' => 584, '>' => 584,
+        '?' => 611, '@' => 975,
+        'A' => 722, 'B' => 722, 'C' => 722, 'D' => 722, 'E' => 667,
+        'F' => 611, 'G' => 778, 'H' => 722, 'I' => 278, 'J' => 556,
+        'K' => 722, 'L' => 611, 'M' => 833, 'N' => 722, 'O' => 778,
+        'P' => 667, 'Q' => 778, 'R' => 722, 'S' => 667, 'T' => 611,
+        'U' => 722, 'V' => 667, 'W' => 944, 'X' => 667, 'Y' => 667,
+        'Z' => 611,
+        '[' => 333, '\\' => 278, ']' => 333, '^' => 584, '_' => 556,
+        '`' => 333,
+        'a' => 556, 'b' => 611, 'c' => 556, 'd' => 611, 'e' => 556,
+        'f' => 333, 'g' => 611, 'h' => 611, 'i' => 278, 'j' => 278,
+        'k' => 556, 'l' => 278, 'm' => 889, 'n' => 611, 'o' => 611,
+        'p' => 611, 'q' => 611, 'r' => 389, 's' => 556, 't' => 333,
+        'u' => 611, 'v' => 556, 'w' => 778, 'x' => 556, 'y' => 556,
+        'z' => 500,
+        '{' => 389, '|' => 280, '}' => 389, '~' => 584,
+        // Common accented chars
+        'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => 722,
+        'Æ' => 1000, 'Ç' => 722,
+        'È' | 'É' | 'Ê' | 'Ë' => 667,
+        'Ì' | 'Í' | 'Î' | 'Ï' => 278,
+        'Ñ' => 722, 'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' => 778,
+        'Ù' | 'Ú' | 'Û' | 'Ü' => 722, 'Ý' => 667,
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 556,
+        'æ' => 889, 'ç' => 556,
+        'è' | 'é' | 'ê' | 'ë' => 556,
+        'ì' | 'í' | 'î' | 'ï' => 278,
+        'ñ' => 611, 'ò' | 'ó' | 'ô' | 'õ' | 'ö' => 611,
+        'ù' | 'ú' | 'û' | 'ü' => 611, 'ý' | 'ÿ' => 556,
+        '€' => 556,
+        '–' => 556, '—' => 1000,
+        '\u{2018}' | '\u{2019}' => 278, '\u{201c}' | '\u{201d}' => 500,
+        '•' => 350, '…' => 1000,
+        _ => 611,
+    }
 }

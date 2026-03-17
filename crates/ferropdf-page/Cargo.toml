@@ -1,0 +1,9 @@
+[package]
+name    = "ferropdf-page"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ferropdf-core   = { path = "../ferropdf-core" }
+ferropdf-layout = { path = "../ferropdf-layout" }
+log             = { workspace = true }

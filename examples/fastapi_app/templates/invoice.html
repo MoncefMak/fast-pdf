@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; font-size: 14px; color: #1f2937; padding: 40px; }
+
+  .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
+  .logo { font-size: 28px; font-weight: bold; color: #1e40af; }
+  .invoice-info { text-align: right; color: #6b7280; }
+
+  .parties { display: flex; justify-content: space-between; margin-bottom: 30px; }
+  .party { width: 45%; }
+  .party h3 { color: #1e40af; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; }
+  .party p { margin: 4px 0; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  th {
+    background: #1e40af; color: white;
+    padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase;
+  }
+  td { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+  tr:last-child td { border-bottom: none; }
+
+  .total-row { background: #f9fafb; }
+  .total-row td { font-weight: bold; font-size: 16px; }
+
+  .footer {
+    margin-top: 40px; padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+    color: #9ca3af; font-size: 11px; text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">FERROPDF</div>
+    <div class="invoice-info">
+      <div style="font-size: 24px; font-weight: bold;">FACTURE #{{ invoice_id }}</div>
+      <div>Date : 17/03/2026</div>
+      <div>Échéance : 17/04/2026</div>
+    </div>
+  </div>
+
+  <div class="parties">
+    <div class="party">
+      <h3>Émetteur</h3>
+      <p><strong>FerroTech SARL</strong></p>
+      <p>42 rue du Code</p>
+      <p>75001 Paris, France</p>
+      <p>contact@ferrotech.dev</p>
+    </div>
+    <div class="party">
+      <h3>Client</h3>
+      <p><strong>Acme Corp</strong></p>
+      <p>123 Business Avenue</p>
+      <p>69000 Lyon, France</p>
+      <p>billing@acme.com</p>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Quantité</th>
+        <th>Prix unitaire</th>
+        <th style="text-align: right;">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.desc }}</td>
+        <td>{{ item.qty }}</td>
+        <td>{{ item.price }} EUR</td>
+        <td style="text-align: right;">{{ item.qty * item.price }} EUR</td>
+      </tr>
+      {% endfor %}
+      <tr class="total-row">
+        <td colspan="3" style="text-align: right;">Total HT</td>
+        <td style="text-align: right;">{{ total }} EUR</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer">
+    Généré par ferropdf — PDF haute performance propulsé par Rust
+  </div>
+</body>
+</html>

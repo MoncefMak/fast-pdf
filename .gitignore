@@ -1,45 +1,28 @@
 # Rust
-rust-engine/target/
-**/*.rs.bk
+/target/
+Cargo.lock
 
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-*.pyd
 *.egg-info/
 dist/
 build/
 .eggs/
-*.whl
 
-# Virtual environments
+# Virtual environment
 .venv/
-venv/
-ENV/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Testing
-.pytest_cache/
-htmlcov/
-.coverage
-coverage.xml
-
-# Build artifacts
-*.pdf
-examples/output/
-test_output.pdf
-
-# maturin
-target/
+# Maturin
+*.whl

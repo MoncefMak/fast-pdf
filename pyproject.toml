@@ -1,75 +1,18 @@
 [build-system]
-requires = ["maturin>=1.7,<2.0"]
+requires      = ["maturin>=1.5,<2"]
 build-backend = "maturin"
 
 [project]
-name = "ferropdf"
-version = "0.1.3"
-description = "High-performance PDF generation from HTML/CSS/Tailwind — Rust-powered Python library"
-readme = "README.md"
-license = { text = "MIT OR Apache-2.0" }
+name            = "ferropdf"
+version         = "0.1.0"
+description     = "Fast HTML to PDF — Rust-powered, 10x faster than WeasyPrint"
+readme          = "README.md"
 requires-python = ">=3.8"
-authors = [
-    { name = "Makti Moncef", email = "moncefmak@users.noreply.github.com" }
-]
-keywords = ["pdf", "html", "css", "tailwind", "rendering", "document", "invoice", "arabic", "rtl"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Rust",
-    "Topic :: Text Processing :: Markup :: HTML",
-    "Topic :: Printing",
-    "Framework :: Django",
-    "Framework :: FastAPI",
-]
-dependencies = []
-
-[project.optional-dependencies]
-django = ["django>=3.2"]
-fastapi = ["fastapi>=0.95", "jinja2>=3.0", "python-multipart>=0.0.5"]
-all = ["django>=3.2", "fastapi>=0.95", "jinja2>=3.0"]
-dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "pytest-benchmark>=4.0",
-    "pytest-asyncio>=0.21",
-    "maturin>=1.0",
-    "weasyprint>=60.0",
-    "httpx>=0.24",
-    "jinja2>=3.0",
-]
-
-[project.urls]
-Homepage = "https://github.com/MoncefMak/ferropdf"
-Documentation = "https://github.com/MoncefMak/ferropdf#readme"
-Repository = "https://github.com/MoncefMak/ferropdf"
-Issues = "https://github.com/MoncefMak/ferropdf/issues"
-Changelog = "https://github.com/MoncefMak/ferropdf/blob/main/CHANGELOG.md"
+license         = { text = "MIT" }
+keywords        = ["pdf", "html", "rust", "weasyprint"]
 
 [tool.maturin]
-manifest-path = "rust-engine/bindings/python/Cargo.toml"
-python-source = "python-wrapper"
-module-name = "fastpdf._engine"
-features = ["pyo3/extension-module"]
-include = [
-    { path = "fastpdf/py.typed", format = "wheel" }
-]
-
-[tool.pytest.ini_options]
-testpaths = ["tests/python"]
-addopts = "--tb=short -v"
-
-[tool.coverage.run]
-source = ["fastpdf"]
-omit = ["*/test_*", "*/__init__.py"]
-
-[tool.coverage.report]
-fail_under = 55
-show_missing = true
+manifest-path = "bindings/python/Cargo.toml"
+python-source = "python"
+module-name   = "ferropdf._ferropdf"
+features      = ["pyo3/extension-module"]

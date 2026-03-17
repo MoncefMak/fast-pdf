@@ -1,0 +1,12 @@
+[package]
+name    = "ferropdf-style"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ferropdf-core  = { path = "../ferropdf-core" }
+ferropdf-parse = { path = "../ferropdf-parse" }
+cssparser      = { workspace = true }
+selectors      = { workspace = true }
+hashbrown      = { workspace = true }
+log            = { workspace = true }

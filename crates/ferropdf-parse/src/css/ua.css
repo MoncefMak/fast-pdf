@@ -1,0 +1,42 @@
+/* User-Agent stylesheet — styles navigateur par défaut */
+/* Embarqué avec include_str!("ua.css") */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: sans-serif; font-size: 16px; color: #000; background: #fff; }
+
+h1 { display: block; font-size: 2em;    font-weight: bold; margin: 0.67em 0; }
+h2 { display: block; font-size: 1.5em;  font-weight: bold; margin: 0.75em 0; }
+h3 { display: block; font-size: 1.17em; font-weight: bold; margin: 0.83em 0; }
+h4 { display: block; font-size: 1em;    font-weight: bold; margin: 1.12em 0; }
+h5 { display: block; font-size: 0.83em; font-weight: bold; margin: 1.5em  0; }
+h6 { display: block; font-size: 0.67em; font-weight: bold; margin: 1.67em 0; }
+
+p  { display: block; margin: 1em 0; }
+blockquote { display: block; margin: 1em 40px; }
+pre  { display: block; white-space: pre; margin: 1em 0; font-family: monospace; }
+code, kbd, samp, tt { font-family: monospace; }
+
+ul, ol { display: block; margin: 1em 0; padding-left: 40px; }
+li     { display: list-item; }
+
+a         { color: #0000ee; text-decoration: underline; }
+strong, b { font-weight: bold; }
+em, i     { font-style: italic; }
+small     { font-size: 0.83em; }
+sub       { font-size: 0.83em; }
+sup       { font-size: 0.83em; }
+
+hr { display: block; margin: 0.5em 0; border: 1px solid #ccc; }
+
+table   { display: table; border-collapse: separate; border-spacing: 2px; }
+thead   { display: table-header-group; }
+tbody   { display: table-row-group; }
+tfoot   { display: table-footer-group; }
+tr      { display: table-row; }
+th      { display: table-cell; font-weight: bold; text-align: center; }
+td      { display: table-cell; }
+
+img     { display: inline; }
+div, section, article, aside, header, footer, main, nav { display: block; }
+span, label, abbr { display: inline; }

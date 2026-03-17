@@ -1,0 +1,9 @@
+[package]
+name    = "ferropdf-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = { workspace = true }
+id-arena  = { workspace = true }
+hashbrown = { workspace = true }

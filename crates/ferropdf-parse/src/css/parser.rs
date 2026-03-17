@@ -1,0 +1,409 @@
+use cssparser::{Parser, ParserInput, Token, ParseError};
+
+/// A parsed CSS stylesheet
+#[derive(Debug, Clone)]
+pub struct Stylesheet {
+    pub rules: Vec<StyleRule>,
+}
+
+/// A single CSS rule: selector(s) + declarations
+#[derive(Debug, Clone)]
+pub struct StyleRule {
+    pub selectors: Vec<String>,
+    pub declarations: Vec<Declaration>,
+}
+
+/// A CSS declaration: property + value
+#[derive(Debug, Clone)]
+pub struct Declaration {
+    pub property: CssProperty,
+    pub value: CssValue,
+    pub important: bool,
+}
+
+/// CSS property names we support
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssProperty {
+    Display,
+    Position,
+    Width,
+    Height,
+    MinWidth,
+    MaxWidth,
+    MinHeight,
+    MaxHeight,
+    MarginTop,
+    MarginRight,
+    MarginBottom,
+    MarginLeft,
+    Margin,
+    PaddingTop,
+    PaddingRight,
+    PaddingBottom,
+    PaddingLeft,
+    Padding,
+    BorderTop,
+    BorderRight,
+    BorderBottom,
+    BorderLeft,
+    Border,
+    BorderWidth,
+    BorderColor,
+    BorderStyle,
+    BorderRadius,
+    BorderCollapse,
+    BorderSpacing,
+    Color,
+    BackgroundColor,
+    Background,
+    Opacity,
+    FontFamily,
+    FontSize,
+    FontWeight,
+    FontStyle,
+    LineHeight,
+    TextAlign,
+    TextDecoration,
+    LetterSpacing,
+    FlexDirection,
+    FlexWrap,
+    JustifyContent,
+    AlignItems,
+    AlignSelf,
+    Flex,
+    FlexGrow,
+    FlexShrink,
+    FlexBasis,
+    Gap,
+    ColumnGap,
+    RowGap,
+    PageBreakBefore,
+    PageBreakAfter,
+    PageBreakInside,
+    Orphans,
+    Widows,
+    Visibility,
+    BoxSizing,
+    ListStyleType,
+    WhiteSpace,
+    Unknown(String),
+}
+
+impl CssProperty {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "display" => CssProperty::Display,
+            "position" => CssProperty::Position,
+            "width" => CssProperty::Width,
+            "height" => CssProperty::Height,
+            "min-width" => CssProperty::MinWidth,
+            "max-width" => CssProperty::MaxWidth,
+            "min-height" => CssProperty::MinHeight,
+            "max-height" => CssProperty::MaxHeight,
+            "margin-top" => CssProperty::MarginTop,
+            "margin-right" => CssProperty::MarginRight,
+            "margin-bottom" => CssProperty::MarginBottom,
+            "margin-left" => CssProperty::MarginLeft,
+            "margin" => CssProperty::Margin,
+            "padding-top" => CssProperty::PaddingTop,
+            "padding-right" => CssProperty::PaddingRight,
+            "padding-bottom" => CssProperty::PaddingBottom,
+            "padding-left" => CssProperty::PaddingLeft,
+            "padding" => CssProperty::Padding,
+            "border-top" => CssProperty::BorderTop,
+            "border-right" => CssProperty::BorderRight,
+            "border-bottom" => CssProperty::BorderBottom,
+            "border-left" => CssProperty::BorderLeft,
+            "border" => CssProperty::Border,
+            "border-width" => CssProperty::BorderWidth,
+            "border-color" => CssProperty::BorderColor,
+            "border-style" => CssProperty::BorderStyle,
+            "border-radius" => CssProperty::BorderRadius,
+            "border-collapse" => CssProperty::BorderCollapse,
+            "border-spacing" => CssProperty::BorderSpacing,
+            "color" => CssProperty::Color,
+            "background-color" => CssProperty::BackgroundColor,
+            "background" => CssProperty::Background,
+            "opacity" => CssProperty::Opacity,
+            "font-family" => CssProperty::FontFamily,
+            "font-size" => CssProperty::FontSize,
+            "font-weight" => CssProperty::FontWeight,
+            "font-style" => CssProperty::FontStyle,
+            "line-height" => CssProperty::LineHeight,
+            "text-align" => CssProperty::TextAlign,
+            "text-decoration" => CssProperty::TextDecoration,
+            "letter-spacing" => CssProperty::LetterSpacing,
+            "flex-direction" => CssProperty::FlexDirection,
+            "flex-wrap" => CssProperty::FlexWrap,
+            "justify-content" => CssProperty::JustifyContent,
+            "align-items" => CssProperty::AlignItems,
+            "align-self" => CssProperty::AlignSelf,
+            "flex" => CssProperty::Flex,
+            "flex-grow" => CssProperty::FlexGrow,
+            "flex-shrink" => CssProperty::FlexShrink,
+            "flex-basis" => CssProperty::FlexBasis,
+            "gap" => CssProperty::Gap,
+            "column-gap" => CssProperty::ColumnGap,
+            "row-gap" => CssProperty::RowGap,
+            "page-break-before" => CssProperty::PageBreakBefore,
+            "page-break-after" => CssProperty::PageBreakAfter,
+            "page-break-inside" => CssProperty::PageBreakInside,
+            "orphans" => CssProperty::Orphans,
+            "widows" => CssProperty::Widows,
+            "visibility" => CssProperty::Visibility,
+            "box-sizing" => CssProperty::BoxSizing,
+            "list-style-type" => CssProperty::ListStyleType,
+            "white-space" => CssProperty::WhiteSpace,
+            other => CssProperty::Unknown(other.to_string()),
+        }
+    }
+}
+
+/// A CSS value (raw string for now — resolved by ferropdf-style)
+#[derive(Debug, Clone)]
+pub enum CssValue {
+    String(String),
+    Number(f32),
+    Length(f32, String),
+    Percentage(f32),
+    Color(String),
+    Keyword(String),
+    Multiple(Vec<CssValue>),
+}
+
+impl CssValue {
+    pub fn as_str(&self) -> &str {
+        match self {
+            CssValue::String(s) => s,
+            CssValue::Keyword(s) => s,
+            CssValue::Color(s) => s,
+            _ => "",
+        }
+    }
+
+    pub fn raw_string(&self) -> String {
+        match self {
+            CssValue::String(s) => s.clone(),
+            CssValue::Number(n) => n.to_string(),
+            CssValue::Length(v, u) => format!("{}{}", v, u),
+            CssValue::Percentage(v) => format!("{}%", v),
+            CssValue::Color(s) => s.clone(),
+            CssValue::Keyword(s) => s.clone(),
+            CssValue::Multiple(vals) => vals.iter()
+                .map(|v| v.raw_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+        }
+    }
+}
+
+/// Parse a CSS stylesheet string into a Stylesheet
+pub fn parse_stylesheet(css: &str) -> ferropdf_core::Result<Stylesheet> {
+    let mut input = ParserInput::new(css);
+    let mut parser = Parser::new(&mut input);
+    let mut rules = Vec::new();
+
+    while !parser.is_exhausted() {
+        // Skip whitespace and comments
+        let _ = parser.try_parse(|p| -> Result<(), ParseError<'_, ()>> {
+            p.expect_whitespace()?;
+            Ok(())
+        });
+
+        if parser.is_exhausted() {
+            break;
+        }
+
+        // Try to parse @media or other at-rules (skip them for now)
+        let start = parser.state();
+        let is_at_rule = matches!(parser.next(), Ok(&Token::AtKeyword(_)));
+        if is_at_rule {
+            let _ = skip_at_rule(&mut parser);
+            continue;
+        }
+        parser.reset(&start);
+
+        // Parse a qualified rule (selector { declarations })
+        match parse_qualified_rule(&mut parser) {
+            Some(rule) => rules.push(rule),
+            None => {
+                // Skip to next rule
+                let _ = parser.next();
+            }
+        }
+    }
+
+    Ok(Stylesheet { rules })
+}
+
+fn skip_at_rule(parser: &mut Parser<'_, '_>) -> Result<(), ()> {
+    loop {
+        match parser.next() {
+            Ok(&Token::CurlyBracketBlock) => {
+                let _ = parser.parse_nested_block(|p| -> Result<(), ParseError<'_, ()>> {
+                    while p.next().is_ok() {}
+                    Ok(())
+                });
+                return Ok(());
+            }
+            Ok(&Token::Semicolon) => return Ok(()),
+            Err(_) => return Err(()),
+            _ => {}
+        }
+    }
+}
+
+fn parse_qualified_rule(parser: &mut Parser<'_, '_>) -> Option<StyleRule> {
+    // Collect selector tokens until we hit '{'
+    let mut selector_text = String::new();
+    let start = parser.state();
+
+    loop {
+        match parser.next_including_whitespace() {
+            Ok(&Token::CurlyBracketBlock) => break,
+            Ok(token) => {
+                selector_text.push_str(&token.to_css_string());
+            }
+            Err(_) => {
+                parser.reset(&start);
+                return None;
+            }
+        }
+    }
+
+    let selectors: Vec<String> = selector_text
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if selectors.is_empty() {
+        return None;
+    }
+
+    // Parse declarations inside the block
+    let declarations = parser.parse_nested_block(|p| {
+        let mut decls = Vec::new();
+        while !p.is_exhausted() {
+            if let Some(decl) = parse_declaration(p) {
+                decls.push(decl);
+            } else {
+                // Skip to next semicolon or end
+                let _ = p.next();
+            }
+        }
+        Ok::<_, ParseError<'_, ()>>(decls)
+    }).unwrap_or_default();
+
+    Some(StyleRule { selectors, declarations })
+}
+
+fn parse_declaration(parser: &mut Parser<'_, '_>) -> Option<Declaration> {
+    let _ = parser.try_parse(|p| -> Result<(), ParseError<'_, ()>> {
+        p.expect_whitespace()?;
+        Ok(())
+    });
+
+    let name = parser.expect_ident().ok()?.to_string();
+    parser.expect_colon().ok()?;
+
+    let mut value_tokens = Vec::new();
+    let mut important = false;
+
+    loop {
+        match parser.next_including_whitespace() {
+            Ok(&Token::Semicolon) => break,
+            Ok(&Token::Delim('!')) => {
+                if let Ok(kw) = parser.expect_ident() {
+                    if kw.eq_ignore_ascii_case("important") {
+                        important = true;
+                    }
+                }
+            }
+            Ok(token) => {
+                value_tokens.push(token.to_css_string());
+            }
+            Err(_) => break,
+        }
+    }
+
+    let raw_value = value_tokens.join("").trim().to_string();
+    if raw_value.is_empty() {
+        return None;
+    }
+
+    let property = CssProperty::from_str(&name);
+    let value = parse_css_value(&raw_value);
+
+    Some(Declaration { property, value, important })
+}
+
+fn parse_css_value(raw: &str) -> CssValue {
+    let raw = raw.trim();
+
+    // Try as a number
+    if let Ok(n) = raw.parse::<f32>() {
+        return CssValue::Number(n);
+    }
+
+    // Try as percentage
+    if raw.ends_with('%') {
+        if let Ok(n) = raw[..raw.len()-1].trim().parse::<f32>() {
+            return CssValue::Percentage(n);
+        }
+    }
+
+    // Try as length
+    for unit in &["px", "pt", "em", "rem", "mm", "cm", "in", "vh", "vw"] {
+        if raw.ends_with(unit) {
+            if let Ok(n) = raw[..raw.len()-unit.len()].trim().parse::<f32>() {
+                return CssValue::Length(n, unit.to_string());
+            }
+        }
+    }
+
+    // Try as color
+    if raw.starts_with('#') || raw.starts_with("rgb") || raw.starts_with("hsl") {
+        return CssValue::Color(raw.to_string());
+    }
+
+    // Check for multiple values (space-separated)
+    let parts: Vec<&str> = raw.split_whitespace().collect();
+    if parts.len() > 1 {
+        let values: Vec<CssValue> = parts.iter().map(|p| parse_css_value(p)).collect();
+        return CssValue::Multiple(values);
+    }
+
+    // Default: keyword or string
+    CssValue::Keyword(raw.to_string())
+}
+
+trait ToCssString {
+    fn to_css_string(&self) -> String;
+}
+
+impl<'a> ToCssString for Token<'a> {
+    fn to_css_string(&self) -> String {
+        match self {
+            Token::Ident(s) => s.to_string(),
+            Token::Number { value, .. } => value.to_string(),
+            Token::Percentage { unit_value, .. } => format!("{}%", unit_value * 100.0),
+            Token::Dimension { value, unit, .. } => format!("{}{}", value, unit),
+            Token::Hash(s) | Token::IDHash(s) => format!("#{}", s),
+            Token::QuotedString(s) => format!("\"{}\"", s),
+            Token::WhiteSpace(_) => " ".to_string(),
+            Token::Colon => ":".to_string(),
+            Token::Semicolon => ";".to_string(),
+            Token::Comma => ",".to_string(),
+            Token::Delim(c) => c.to_string(),
+            Token::Function(name) => format!("{}(", name),
+            Token::ParenthesisBlock => "(".to_string(),
+            Token::SquareBracketBlock => "[".to_string(),
+            Token::CurlyBracketBlock => "{".to_string(),
+            Token::CloseParenthesis => ")".to_string(),
+            Token::CloseSquareBracket => "]".to_string(),
+            Token::CloseCurlyBracket => "}".to_string(),
+            _ => String::new(),
+        }
+    }
+}

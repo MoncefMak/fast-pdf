@@ -1,0 +1,12 @@
+[package]
+name    = "ferropdf-layout"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ferropdf-core  = { path = "../ferropdf-core" }
+ferropdf-style = { path = "../ferropdf-style" }
+taffy          = { workspace = true }
+cosmic-text    = { workspace = true }
+fontdb         = { workspace = true }
+log            = { workspace = true }

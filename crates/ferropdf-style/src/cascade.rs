@@ -1,0 +1,503 @@
+use ferropdf_core::*;
+use ferropdf_parse::{Declaration, CssProperty, CssValue};
+
+pub fn apply_declarations(
+    style: &mut ComputedStyle,
+    declarations: &[Declaration],
+    root_font_size: f32,
+) {
+    // Sort by specificity: non-important first, then important
+    let mut non_important: Vec<&Declaration> = Vec::new();
+    let mut important: Vec<&Declaration> = Vec::new();
+
+    for decl in declarations {
+        if decl.important {
+            important.push(decl);
+        } else {
+            non_important.push(decl);
+        }
+    }
+
+    for decl in &non_important {
+        apply_single(style, &decl.property, &decl.value, root_font_size);
+    }
+    for decl in &important {
+        apply_single(style, &decl.property, &decl.value, root_font_size);
+    }
+}
+
+pub fn apply_rule_declarations(
+    style: &mut ComputedStyle,
+    declarations: &[Declaration],
+    root_font_size: f32,
+) {
+    apply_declarations(style, declarations, root_font_size);
+}
+
+fn apply_single(
+    style: &mut ComputedStyle,
+    property: &CssProperty,
+    value: &CssValue,
+    root_font_size: f32,
+) {
+    let raw = value.raw_string();
+    let raw = raw.trim();
+
+    match property {
+        CssProperty::Display => {
+            style.display = match raw {
+                "block" => Display::Block,
+                "inline" => Display::Inline,
+                "inline-block" => Display::InlineBlock,
+                "flex" => Display::Flex,
+                "grid" => Display::Grid,
+                "table" => Display::Table,
+                "table-row" => Display::TableRow,
+                "table-cell" => Display::TableCell,
+                "table-header-group" => Display::TableHeaderGroup,
+                "table-row-group" => Display::TableRowGroup,
+                "table-footer-group" => Display::TableFooterGroup,
+                "list-item" => Display::ListItem,
+                "none" => Display::None,
+                _ => Display::Block,
+            };
+        }
+        CssProperty::Position => {
+            style.position = match raw {
+                "relative" => Position::Relative,
+                "absolute" => Position::Absolute,
+                "fixed" => Position::Fixed,
+                "sticky" => Position::Sticky,
+                _ => Position::Static,
+            };
+        }
+        CssProperty::Width => style.width = parse_length(raw),
+        CssProperty::Height => style.height = parse_length(raw),
+        CssProperty::MinWidth => style.min_width = parse_length(raw),
+        CssProperty::MaxWidth => style.max_width = parse_length(raw),
+        CssProperty::MinHeight => style.min_height = parse_length(raw),
+        CssProperty::MaxHeight => style.max_height = parse_length(raw),
+
+        CssProperty::Margin => {
+            let vals = parse_shorthand_lengths(raw);
+            if vals.len() == 1 {
+                style.margin = [vals[0]; 4];
+            } else if vals.len() == 2 {
+                style.margin = [vals[0], vals[1], vals[0], vals[1]];
+            } else if vals.len() == 3 {
+                style.margin = [vals[0], vals[1], vals[2], vals[1]];
+            } else if vals.len() >= 4 {
+                style.margin = [vals[0], vals[1], vals[2], vals[3]];
+            }
+        }
+        CssProperty::MarginTop => style.margin[0] = parse_length(raw),
+        CssProperty::MarginRight => style.margin[1] = parse_length(raw),
+        CssProperty::MarginBottom => style.margin[2] = parse_length(raw),
+        CssProperty::MarginLeft => style.margin[3] = parse_length(raw),
+
+        CssProperty::Padding => {
+            let vals = parse_shorthand_lengths(raw);
+            if vals.len() == 1 {
+                style.padding = [vals[0]; 4];
+            } else if vals.len() == 2 {
+                style.padding = [vals[0], vals[1], vals[0], vals[1]];
+            } else if vals.len() == 3 {
+                style.padding = [vals[0], vals[1], vals[2], vals[1]];
+            } else if vals.len() >= 4 {
+                style.padding = [vals[0], vals[1], vals[2], vals[3]];
+            }
+        }
+        CssProperty::PaddingTop => style.padding[0] = parse_length(raw),
+        CssProperty::PaddingRight => style.padding[1] = parse_length(raw),
+        CssProperty::PaddingBottom => style.padding[2] = parse_length(raw),
+        CssProperty::PaddingLeft => style.padding[3] = parse_length(raw),
+
+        CssProperty::Border => {
+            let side = parse_border_shorthand(raw);
+            style.border_top = side.clone();
+            style.border_right = side.clone();
+            style.border_bottom = side.clone();
+            style.border_left = side;
+        }
+        CssProperty::BorderTop => style.border_top = parse_border_shorthand(raw),
+        CssProperty::BorderRight => style.border_right = parse_border_shorthand(raw),
+        CssProperty::BorderBottom => style.border_bottom = parse_border_shorthand(raw),
+        CssProperty::BorderLeft => style.border_left = parse_border_shorthand(raw),
+        CssProperty::BorderWidth => {
+            if let Some(w) = parse_length_to_px(raw) {
+                style.border_top.width = w;
+                style.border_right.width = w;
+                style.border_bottom.width = w;
+                style.border_left.width = w;
+            }
+        }
+        CssProperty::BorderColor => {
+            if let Some(c) = parse_color(raw) {
+                style.border_top.color = c;
+                style.border_right.color = c;
+                style.border_bottom.color = c;
+                style.border_left.color = c;
+            }
+        }
+        CssProperty::BorderStyle => {
+            let bs = parse_border_style(raw);
+            style.border_top.style = bs.clone();
+            style.border_right.style = bs.clone();
+            style.border_bottom.style = bs.clone();
+            style.border_left.style = bs;
+        }
+        CssProperty::BorderRadius => {
+            if let Some(r) = parse_length_to_px(raw) {
+                style.border_radius = BorderRadius::uniform(r);
+            }
+        }
+
+        CssProperty::Color => {
+            if let Some(c) = parse_color(raw) { style.color = c; }
+        }
+        CssProperty::BackgroundColor | CssProperty::Background => {
+            if let Some(c) = parse_color(raw) { style.background_color = c; }
+        }
+        CssProperty::Opacity => {
+            if let Ok(v) = raw.parse::<f32>() { style.opacity = v.clamp(0.0, 1.0); }
+        }
+
+        CssProperty::FontFamily => {
+            style.font_family = raw.split(',')
+                .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
+                .collect();
+        }
+        CssProperty::FontSize => {
+            style.font_size = resolve_font_size(raw, style.font_size, root_font_size);
+        }
+        CssProperty::FontWeight => {
+            style.font_weight = match raw {
+                "bold" | "700" => FontWeight::Bold,
+                "normal" | "400" => FontWeight::Normal,
+                "bolder" => FontWeight::Bolder,
+                "lighter" => FontWeight::Lighter,
+                "100" => FontWeight::W100,
+                "200" => FontWeight::W200,
+                "300" => FontWeight::W300,
+                "500" => FontWeight::W500,
+                "600" => FontWeight::W600,
+                "800" => FontWeight::W800,
+                "900" => FontWeight::W900,
+                _ => FontWeight::Normal,
+            };
+        }
+        CssProperty::FontStyle => {
+            style.font_style = match raw {
+                "italic" => FontStyle::Italic,
+                "oblique" => FontStyle::Oblique,
+                _ => FontStyle::Normal,
+            };
+        }
+        CssProperty::LineHeight => {
+            if let Some(px) = parse_length_to_px(raw) {
+                style.line_height = px;
+            } else if let Ok(factor) = raw.parse::<f32>() {
+                style.line_height = factor * style.font_size;
+            }
+        }
+        CssProperty::TextAlign => {
+            style.text_align = match raw {
+                "center" => TextAlign::Center,
+                "right" => TextAlign::Right,
+                "justify" => TextAlign::Justify,
+                _ => TextAlign::Left,
+            };
+        }
+        CssProperty::TextDecoration => {
+            style.text_decoration = match raw {
+                "underline" => ferropdf_core::style::TextDecoration::Underline,
+                "line-through" => ferropdf_core::style::TextDecoration::LineThrough,
+                "overline" => ferropdf_core::style::TextDecoration::Overline,
+                _ => ferropdf_core::style::TextDecoration::None,
+            };
+        }
+        CssProperty::LetterSpacing => {
+            if let Some(px) = parse_length_to_px(raw) {
+                style.letter_spacing = px;
+            }
+        }
+
+        CssProperty::FlexDirection => {
+            style.flex_direction = match raw {
+                "column" => FlexDirection::Column,
+                "row-reverse" => FlexDirection::RowReverse,
+                "column-reverse" => FlexDirection::ColumnReverse,
+                _ => FlexDirection::Row,
+            };
+        }
+        CssProperty::FlexWrap => {
+            style.flex_wrap = match raw {
+                "wrap" => FlexWrap::Wrap,
+                "wrap-reverse" => FlexWrap::WrapReverse,
+                _ => FlexWrap::NoWrap,
+            };
+        }
+        CssProperty::JustifyContent => {
+            style.justify_content = match raw {
+                "center" => JustifyContent::Center,
+                "flex-end" => JustifyContent::FlexEnd,
+                "space-between" => JustifyContent::SpaceBetween,
+                "space-around" => JustifyContent::SpaceAround,
+                "space-evenly" => JustifyContent::SpaceEvenly,
+                _ => JustifyContent::FlexStart,
+            };
+        }
+        CssProperty::AlignItems => {
+            style.align_items = match raw {
+                "center" => AlignItems::Center,
+                "flex-start" => AlignItems::FlexStart,
+                "flex-end" => AlignItems::FlexEnd,
+                "baseline" => AlignItems::Baseline,
+                _ => AlignItems::Stretch,
+            };
+        }
+        CssProperty::AlignSelf => {
+            style.align_self = match raw {
+                "center" => AlignSelf::Center,
+                "flex-start" => AlignSelf::FlexStart,
+                "flex-end" => AlignSelf::FlexEnd,
+                "stretch" => AlignSelf::Stretch,
+                "baseline" => AlignSelf::Baseline,
+                _ => AlignSelf::Auto,
+            };
+        }
+        CssProperty::Flex => {
+            // flex shorthand: flex-grow [flex-shrink] [flex-basis]
+            let parts: Vec<&str> = raw.split_whitespace().collect();
+            if let Some(g) = parts.first().and_then(|s| s.parse::<f32>().ok()) {
+                style.flex_grow = g;
+            }
+            if let Some(s) = parts.get(1).and_then(|s| s.parse::<f32>().ok()) {
+                style.flex_shrink = s;
+            }
+            if let Some(b) = parts.get(2) {
+                style.flex_basis = parse_length(b);
+            }
+        }
+        CssProperty::FlexGrow => {
+            if let Ok(v) = raw.parse::<f32>() { style.flex_grow = v; }
+        }
+        CssProperty::FlexShrink => {
+            if let Ok(v) = raw.parse::<f32>() { style.flex_shrink = v; }
+        }
+        CssProperty::FlexBasis => style.flex_basis = parse_length(raw),
+        CssProperty::Gap => {
+            let l = parse_length(raw);
+            style.column_gap = l;
+            style.row_gap = l;
+        }
+        CssProperty::ColumnGap => style.column_gap = parse_length(raw),
+        CssProperty::RowGap => style.row_gap = parse_length(raw),
+
+        CssProperty::PageBreakBefore => {
+            style.page_break_before = match raw {
+                "always" => PageBreak::Always,
+                "avoid" => PageBreak::Avoid,
+                _ => PageBreak::Auto,
+            };
+        }
+        CssProperty::PageBreakAfter => {
+            style.page_break_after = match raw {
+                "always" => PageBreak::Always,
+                "avoid" => PageBreak::Avoid,
+                _ => PageBreak::Auto,
+            };
+        }
+        CssProperty::PageBreakInside => {
+            style.page_break_inside = match raw {
+                "avoid" => PageBreak::Avoid,
+                _ => PageBreak::Auto,
+            };
+        }
+        CssProperty::Orphans => {
+            if let Ok(v) = raw.parse::<u32>() { style.orphans = v; }
+        }
+        CssProperty::Widows => {
+            if let Ok(v) = raw.parse::<u32>() { style.widows = v; }
+        }
+        CssProperty::Visibility => {
+            style.visibility = raw != "hidden";
+        }
+
+        _ => {} // Unknown or not yet handled
+    }
+}
+
+fn parse_length(s: &str) -> Length {
+    let s = s.trim();
+    if s == "auto" { return Length::Auto; }
+    if s == "0" || s == "0px" { return Length::Zero; }
+    if s == "none" { return Length::None; }
+
+    if s.ends_with('%') {
+        if let Ok(v) = s[..s.len()-1].trim().parse::<f32>() {
+            return Length::Percent(v);
+        }
+    }
+
+    for (suffix, ctor) in &[
+        ("px", Length::Px as fn(f32) -> Length),
+        ("pt", Length::Pt),
+        ("mm", Length::Mm),
+        ("em", Length::Em),
+        ("rem", Length::Rem),
+    ] {
+        if s.ends_with(suffix) {
+            if let Ok(v) = s[..s.len()-suffix.len()].trim().parse::<f32>() {
+                return ctor(v);
+            }
+        }
+    }
+
+    // Bare number → px
+    if let Ok(v) = s.parse::<f32>() {
+        return Length::Px(v);
+    }
+
+    Length::Auto
+}
+
+fn parse_shorthand_lengths(s: &str) -> Vec<Length> {
+    s.split_whitespace().map(parse_length).collect()
+}
+
+fn parse_length_to_px(s: &str) -> Option<f32> {
+    let s = s.trim();
+    if s == "0" || s == "0px" { return Some(0.0); }
+
+    if s.ends_with("px") {
+        return s[..s.len()-2].trim().parse::<f32>().ok();
+    }
+    if s.ends_with("pt") {
+        return s[..s.len()-2].trim().parse::<f32>().ok().map(|v| v * 1.333_333);
+    }
+    if s.ends_with("mm") {
+        return s[..s.len()-2].trim().parse::<f32>().ok().map(|v| v * 3.779_528);
+    }
+
+    s.parse::<f32>().ok()
+}
+
+fn parse_color(s: &str) -> Option<Color> {
+    let s = s.trim();
+    match s {
+        "transparent" => Some(Color::transparent()),
+        "black" => Some(Color::black()),
+        "white" => Some(Color::white()),
+        "red" => Some(Color::from_rgb8(255, 0, 0)),
+        "green" => Some(Color::from_rgb8(0, 128, 0)),
+        "blue" => Some(Color::from_rgb8(0, 0, 255)),
+        "gray" | "grey" => Some(Color::from_rgb8(128, 128, 128)),
+        "orange" => Some(Color::from_rgb8(255, 165, 0)),
+        "yellow" => Some(Color::from_rgb8(255, 255, 0)),
+        "purple" => Some(Color::from_rgb8(128, 0, 128)),
+        _ if s.starts_with('#') => Color::from_hex(s),
+        _ if s.starts_with("rgb") => parse_rgb_function(s),
+        _ => None,
+    }
+}
+
+fn parse_rgb_function(s: &str) -> Option<Color> {
+    let inner = s.trim_start_matches("rgba(")
+        .trim_start_matches("rgb(")
+        .trim_end_matches(')');
+    let parts: Vec<&str> = inner.split(|c| c == ',' || c == ' ').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 {
+        let r = parts[0].trim().parse::<u8>().ok()?;
+        let g = parts[1].trim().parse::<u8>().ok()?;
+        let b = parts[2].trim().parse::<u8>().ok()?;
+        if parts.len() >= 4 {
+            let a = parts[3].trim().parse::<f32>().ok().unwrap_or(1.0);
+            Some(Color::new(r as f32/255.0, g as f32/255.0, b as f32/255.0, a))
+        } else {
+            Some(Color::from_rgb8(r, g, b))
+        }
+    } else {
+        None
+    }
+}
+
+fn parse_border_shorthand(s: &str) -> BorderSide {
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    let mut side = BorderSide::default();
+
+    for part in &parts {
+        if let Some(w) = parse_length_to_px(part) {
+            side.width = w;
+            if side.style == BorderStyle::None {
+                side.style = BorderStyle::Solid;
+            }
+        } else if let Some(c) = parse_color(part) {
+            side.color = c;
+        } else {
+            side.style = parse_border_style(part);
+        }
+    }
+
+    side
+}
+
+fn parse_border_style(s: &str) -> BorderStyle {
+    match s.trim() {
+        "solid" => BorderStyle::Solid,
+        "dashed" => BorderStyle::Dashed,
+        "dotted" => BorderStyle::Dotted,
+        "double" => BorderStyle::Double,
+        _ => BorderStyle::None,
+    }
+}
+
+fn resolve_font_size(raw: &str, parent_size: f32, root_font_size: f32) -> f32 {
+    let raw = raw.trim();
+
+    // Named sizes
+    match raw {
+        "xx-small" => return 9.0,
+        "x-small" => return 10.0,
+        "small" => return 13.0,
+        "medium" => return 16.0,
+        "large" => return 18.0,
+        "x-large" => return 24.0,
+        "xx-large" => return 32.0,
+        "smaller" => return parent_size * 0.833,
+        "larger" => return parent_size * 1.2,
+        _ => {}
+    }
+
+    if raw.ends_with("em") {
+        if let Ok(v) = raw[..raw.len()-2].trim().parse::<f32>() {
+            return v * parent_size;
+        }
+    }
+    if raw.ends_with("rem") {
+        if let Ok(v) = raw[..raw.len()-3].trim().parse::<f32>() {
+            return v * root_font_size;
+        }
+    }
+    if raw.ends_with('%') {
+        if let Ok(v) = raw[..raw.len()-1].trim().parse::<f32>() {
+            return v / 100.0 * parent_size;
+        }
+    }
+    if raw.ends_with("px") {
+        if let Ok(v) = raw[..raw.len()-2].trim().parse::<f32>() {
+            return v;
+        }
+    }
+    if raw.ends_with("pt") {
+        if let Ok(v) = raw[..raw.len()-2].trim().parse::<f32>() {
+            return v * 1.333_333;
+        }
+    }
+
+    if let Ok(v) = raw.parse::<f32>() {
+        return v;
+    }
+
+    parent_size
+}

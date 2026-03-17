@@ -1,1 +1,0 @@
-"""FastPDF framework integrations."""

@@ -1,0 +1,14 @@
+[package]
+name    = "ferropdf-parse"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ferropdf-core = { path = "../ferropdf-core" }
+html5ever      = { workspace = true }
+markup5ever    = { workspace = true }
+cssparser      = { workspace = true }
+selectors      = { workspace = true }
+url            = { workspace = true }
+log            = { workspace = true }
+hashbrown      = { workspace = true }

@@ -1,0 +1,16 @@
+[package]
+name    = "ferropdf-python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name       = "_ferropdf"
+crate-type = ["cdylib"]
+
+[dependencies]
+ferropdf-render = { path = "../../crates/ferropdf-render" }
+ferropdf-core   = { path = "../../crates/ferropdf-core" }
+pyo3 = { workspace = true }
+
+[features]
+default = ["pyo3/extension-module"]

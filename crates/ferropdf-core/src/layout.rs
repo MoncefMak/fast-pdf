@@ -1,0 +1,101 @@
+use crate::{ComputedStyle, NodeId, Rect, Insets};
+
+#[derive(Debug, Clone)]
+pub struct ShapedGlyph {
+    pub glyph_id: u16,
+    pub x:        f32,
+    pub y:        f32,
+    pub advance:  f32,
+    pub font_id:  u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShapedLine {
+    pub glyphs: Vec<ShapedGlyph>,
+    pub width:  f32,
+    pub y:      f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct LayoutBox {
+    pub node_id:      Option<NodeId>,
+    pub style:        ComputedStyle,
+    pub content:      Rect,
+    pub padding:      Insets,
+    pub border:       Insets,
+    pub margin:       Insets,
+    pub children:     Vec<LayoutBox>,
+    pub shaped_lines: Vec<ShapedLine>,
+    pub image_src:    Option<String>,
+    pub text_content: Option<String>,
+}
+
+impl Default for LayoutBox {
+    fn default() -> Self {
+        Self {
+            node_id:      None,
+            style:        ComputedStyle::default(),
+            content:      Rect::zero(),
+            padding:      Insets::zero(),
+            border:       Insets::zero(),
+            margin:       Insets::zero(),
+            children:     Vec::new(),
+            shaped_lines: Vec::new(),
+            image_src:    None,
+            text_content: None,
+        }
+    }
+}
+
+impl LayoutBox {
+    pub fn border_box(&self) -> Rect {
+        Rect::new(
+            self.content.x - self.padding.left - self.border.left,
+            self.content.y - self.padding.top  - self.border.top,
+            self.content.width  + self.padding.horizontal() + self.border.horizontal(),
+            self.content.height + self.padding.vertical()   + self.border.vertical(),
+        )
+    }
+
+    pub fn margin_box_height(&self) -> f32 {
+        self.margin.top + self.border.top + self.padding.top
+        + self.content.height
+        + self.padding.bottom + self.border.bottom + self.margin.bottom
+    }
+
+    pub fn is_text_leaf(&self) -> bool {
+        self.text_content.is_some() && self.children.is_empty()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct LayoutTree {
+    pub root: Option<LayoutBox>,
+}
+
+impl LayoutTree {
+    pub fn new() -> Self { Self::default() }
+}
+
+/// Une page paginée = un sous-ensemble du LayoutTree
+#[derive(Debug, Clone)]
+pub struct Page {
+    pub page_number: u32,
+    pub total_pages: u32,
+    pub content:     Vec<LayoutBox>,
+    pub margin_boxes: Vec<MarginBox>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MarginBox {
+    pub position: MarginBoxPosition,
+    pub rect:     Rect,
+    pub text:     String,
+    pub style:    ComputedStyle,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MarginBoxPosition {
+    TopLeft, TopCenter, TopRight,
+    BottomLeft, BottomCenter, BottomRight,
+}

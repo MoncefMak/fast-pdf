@@ -1,0 +1,21 @@
+[package]
+name    = "ferropdf-render"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ferropdf-core   = { path = "../ferropdf-core" }
+ferropdf-parse  = { path = "../ferropdf-parse" }
+ferropdf-style  = { path = "../ferropdf-style" }
+ferropdf-layout = { path = "../ferropdf-layout" }
+ferropdf-page   = { path = "../ferropdf-page" }
+pdf-writer      = { workspace = true }
+image           = { workspace = true }
+resvg           = { workspace = true }
+usvg            = { workspace = true }
+tiny-skia       = { workspace = true }
+cosmic-text     = { workspace = true }
+fontdb          = { workspace = true }
+flate2          = { workspace = true }
+base64          = { workspace = true }
+log             = { workspace = true }

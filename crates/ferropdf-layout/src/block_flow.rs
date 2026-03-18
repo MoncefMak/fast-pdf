@@ -126,6 +126,14 @@ fn layout_block_children(parent: &mut LayoutBox, ctx: &mut BlockFormattingContex
 
         // Mettre à jour la position Y du LayoutBox
         let dy = block_y - child.rect.y;
+        if dy.abs() > 0.001 {
+            if std::env::var("FERROPDF_DEBUG").is_ok() {
+                let tag = child.node_id.map(|_| "").unwrap_or("");
+                let text = child.text_content.as_deref().unwrap_or("").chars().take(20).collect::<String>();
+                eprintln!("[block_flow] MOVE dy={:.1} old_y={:.1} new_y={:.1} text=\"{}\"",
+                    dy, child.rect.y, block_y, text);
+            }
+        }
         child.rect.y = block_y;
         child.content.y += dy;
 

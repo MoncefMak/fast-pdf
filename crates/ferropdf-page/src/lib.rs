@@ -2,7 +2,7 @@ mod fragment;
 mod at_page;
 pub mod pagination;
 
-use ferropdf_core::{LayoutTree, LayoutBox, PageConfig, Rect, Insets};
+use ferropdf_core::{LayoutTree, PageConfig};
 pub use ferropdf_core::layout::Page;
 
 /// Paginate a layout tree into individual pages.

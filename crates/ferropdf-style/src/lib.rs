@@ -32,8 +32,9 @@ pub fn resolve(
     let mut all_sheets = vec![ua_sheet];
     all_sheets.extend(stylesheets.iter().cloned());
 
-    // Parse all selector lists using the `selectors` crate
-    let rules = matching::parse_rules(&all_sheets);
+    // Parse all selector lists using the `selectors` crate.
+    // UA sheet is the first one — author sheets follow.
+    let rules = matching::parse_rules(&all_sheets, 1);
 
     let root = document.root();
     let mut style_tree = StyleTree::new();

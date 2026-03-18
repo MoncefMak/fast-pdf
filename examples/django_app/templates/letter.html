@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; font-size: 13px; color: #111827; padding: 40px; }
+
+  .letterhead { text-align: center; margin-bottom: 40px; }
+  .letterhead h1 { font-size: 26px; color: #1e40af; }
+  .letterhead p { color: #6b7280; font-size: 12px; margin-top: 4px; }
+
+  .addresses { margin-bottom: 30px; }
+  .addresses .to { margin-bottom: 16px; }
+  .addresses p { margin: 4px 0; }
+  .label { font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 8px; }
+
+  .date-line { text-align: right; margin-bottom: 30px; color: #6b7280; }
+
+  .subject { font-size: 16px; font-weight: bold; margin-bottom: 20px; }
+
+  .body-text p { line-height: 1.7; margin-bottom: 14px; }
+
+  .signature { margin-top: 50px; }
+  .signature .name { font-weight: bold; margin-top: 40px; }
+  .signature .title { color: #6b7280; font-size: 12px; }
+
+  .footer { margin-top: 60px; border-top: 1px solid #e5e7eb; padding-top: 12px;
+            text-align: center; color: #9ca3af; font-size: 10px; }
+</style>
+</head>
+<body>
+  <div class="letterhead">
+    <h1>{{ company_name }}</h1>
+    <p>{{ company_address }}</p>
+  </div>
+
+  <div class="addresses">
+    <div class="to">
+      <p class="label">Destinataire</p>
+      <p><strong>{{ recipient_name }}</strong></p>
+      <p>{{ recipient_company }}</p>
+      <p>{{ recipient_address }}</p>
+    </div>
+  </div>
+
+  <p class="date-line">{{ city }}, le {{ date }}</p>
+
+  <p class="subject">Objet : {{ subject }}</p>
+
+  <div class="body-text">
+    {% for para in paragraphs %}
+    <p>{{ para }}</p>
+    {% endfor %}
+  </div>
+
+  <div class="signature">
+    <p>Cordialement,</p>
+    <p class="name">{{ sender_name }}</p>
+    <p class="title">{{ sender_title }}</p>
+  </div>
+
+  <div class="footer">
+    {{ company_name }} — {{ company_address }}<br>
+    Généré par ferropdf
+  </div>
+</body>
+</html>

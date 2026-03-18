@@ -313,16 +313,25 @@ fn collect_cells(doc: &Document, row_id: NodeId, styles: &StyleTree) -> Vec<Node
 }
 
 /// Recursively collect all text content from a subtree.
+/// Collapses whitespace like HTML: runs of whitespace → single space, then trim.
 pub fn collect_text_content(doc: &Document, node_id: NodeId) -> String {
+    let mut raw = String::new();
+    collect_text_raw(doc, node_id, &mut raw);
+    // HTML whitespace collapsing: replace runs of whitespace with a single space
+    raw.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn collect_text_raw(doc: &Document, node_id: NodeId, out: &mut String) {
     let node = doc.get(node_id);
     if node.is_text() {
-        return node.text.clone().unwrap_or_default();
+        if let Some(ref t) = node.text {
+            out.push_str(t);
+        }
+        return;
     }
-    let mut result = String::new();
     for &child_id in &node.children {
-        result.push_str(&collect_text_content(doc, child_id));
+        collect_text_raw(doc, child_id, out);
     }
-    result
 }
 
 fn resolve_px(length: &Length) -> f32 {

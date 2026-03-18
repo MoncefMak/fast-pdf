@@ -25,9 +25,11 @@ pub fn apply_scored_declarations(
         .filter(|sd| sd.declaration.important)
         .collect();
 
-    // Sort by (specificity, source_order) — both ascending, so last wins
-    non_important.sort_by_key(|sd| (sd.specificity, sd.source_order));
-    important.sort_by_key(|sd| (sd.specificity, sd.source_order));
+    // Sort by (origin, specificity, source_order) — all ascending, so last wins.
+    // Origin: 0=UA, 1=author. Per CSS Cascading Level 4 §6.1,
+    // author normal always beats UA normal regardless of specificity.
+    non_important.sort_by_key(|sd| (sd.origin, sd.specificity, sd.source_order));
+    important.sort_by_key(|sd| (sd.origin, sd.specificity, sd.source_order));
 
     // Apply in order: non-important first, then important overrides
     for sd in &non_important {

@@ -16,7 +16,7 @@ pub fn build_layout(
     styles: &StyleTree,
     font_system: &mut FontSystem,
     available_width: f32,
-    available_height: f32,
+    _available_height: f32,
 ) -> ferropdf_core::Result<LayoutTree> {
     let mut taffy: TaffyTree<TextContext> = TaffyTree::new();
     let mut node_map: HashMap<NodeId, taffy::NodeId> = HashMap::new();
@@ -32,12 +32,14 @@ pub fn build_layout(
         None => return Ok(LayoutTree::new()),
     };
 
-    // Compute layout with cosmic-text measure function for text leaves
+    // Compute layout with cosmic-text measure function for text leaves.
+    // Height is unconstrained (infinite ribbon model) so content flows naturally.
+    // Pagination slices the ribbon into pages afterward.
     taffy.compute_layout_with_measure(
         taffy_root,
         Size {
             width: AvailableSpace::Definite(available_width),
-            height: AvailableSpace::Definite(available_height),
+            height: AvailableSpace::MaxContent,
         },
         |known_dimensions, available_space, _node_id, node_context, _style| {
             if let Some(ctx) = node_context {

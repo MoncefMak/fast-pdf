@@ -391,6 +391,9 @@ pub struct MatchedRule {
     pub declarations: Vec<Declaration>,
     /// Source order index for cascade tiebreaking.
     pub source_order: usize,
+    /// Cascade origin: 0 = user-agent, 1 = author.
+    /// Per CSS Cascading Level 4 §6.1, author normal > UA normal.
+    pub origin: u8,
 }
 
 /// A single declaration with its specificity and source order, ready for cascade sorting.
@@ -400,17 +403,24 @@ pub struct ScoredDeclaration {
     pub specificity: u32,
     /// Source order for tiebreaking.
     pub source_order: usize,
+    /// Cascade origin: 0 = user-agent, 1 = author.
+    pub origin: u8,
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /// Parse all stylesheets into `MatchedRule`s (selector lists + declarations).
 /// Selectors are parsed using the `selectors` crate, not by hand.
-pub fn parse_rules(sheets: &[Stylesheet]) -> Vec<MatchedRule> {
+///
+/// `ua_sheet_count` indicates how many of the leading sheets are UA stylesheets.
+/// UA rules get origin=0, author rules get origin=1. Per CSS Cascading Level 4,
+/// author rules always beat UA rules regardless of specificity.
+pub fn parse_rules(sheets: &[Stylesheet], ua_sheet_count: usize) -> Vec<MatchedRule> {
     let mut rules = Vec::new();
     let mut order = 0usize;
 
-    for sheet in sheets {
+    for (sheet_idx, sheet) in sheets.iter().enumerate() {
+        let origin: u8 = if sheet_idx < ua_sheet_count { 0 } else { 1 };
         for rule in &sheet.rules {
             // Join selectors back to a single string and let the selectors crate parse them
             let selector_text = rule.selectors.join(", ");
@@ -428,6 +438,7 @@ pub fn parse_rules(sheets: &[Stylesheet]) -> Vec<MatchedRule> {
                     selectors: selector_list,
                     declarations: rule.declarations.clone(),
                     source_order: order,
+                    origin,
                 });
                 order += 1;
             } else {
@@ -481,6 +492,7 @@ pub fn match_node<'a>(
                         declaration: decl.clone(),
                         specificity,
                         source_order: rule.source_order,
+                        origin: rule.origin,
                     });
                 }
             }

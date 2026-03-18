@@ -100,7 +100,7 @@ impl PyEngine {
         });
 
         match result {
-            Ok(bytes) => Ok(PyBytes::new_bound(py, &bytes)),
+            Ok(bytes) => Ok(PyBytes::new(py, &bytes)),
             Err(e) => Err(to_py_err(e)),
         }
     }
@@ -166,11 +166,11 @@ fn _ferropdf(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(from_html, m)?)?;
     m.add_function(wrap_pyfunction!(from_file, m)?)?;
     m.add_function(wrap_pyfunction!(write_pdf, m)?)?;
-    m.add("FerroError", py.get_type_bound::<FerroError>())?;
-    m.add("ParseError", py.get_type_bound::<ParseError>())?;
-    m.add("LayoutError", py.get_type_bound::<LayoutError>())?;
-    m.add("FontError", py.get_type_bound::<FontError>())?;
-    m.add("RenderError", py.get_type_bound::<RenderError>())?;
+    m.add("FerroError", py.get_type::<FerroError>())?;
+    m.add("ParseError", py.get_type::<ParseError>())?;
+    m.add("LayoutError", py.get_type::<LayoutError>())?;
+    m.add("FontError", py.get_type::<FontError>())?;
+    m.add("RenderError", py.get_type::<RenderError>())?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

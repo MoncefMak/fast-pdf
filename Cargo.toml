@@ -49,7 +49,7 @@ flate2       = "1.0"
 ureq         = { version = "2.9", features = ["tls"] }
 
 # Python bindings
-pyo3         = { version = "0.21", features = ["extension-module"] }
+pyo3         = { version = "0.24", features = ["extension-module"] }
 
 [profile.release]
 lto           = true

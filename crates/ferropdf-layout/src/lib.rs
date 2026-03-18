@@ -1,10 +1,10 @@
-pub mod style_to_taffy;
-pub mod text;
 pub mod block_flow;
+pub mod style_to_taffy;
 pub mod table_layout;
 mod taffy_bridge;
+pub mod text;
 
-use ferropdf_core::{Document, LayoutTree, LayoutBox};
+use ferropdf_core::{Document, LayoutBox, LayoutTree};
 use ferropdf_style::StyleTree;
 pub use text::FontDatabase;
 
@@ -17,7 +17,13 @@ pub fn layout(
     available_height: f32,
 ) -> ferropdf_core::Result<LayoutTree> {
     let owned_font_db = FontDatabase::new();
-    layout_with_fonts(document, styles, available_width, available_height, &owned_font_db)
+    layout_with_fonts(
+        document,
+        styles,
+        available_width,
+        available_height,
+        &owned_font_db,
+    )
 }
 
 /// Same as `layout` but reuses an existing FontDatabase (avoids reloading system fonts).

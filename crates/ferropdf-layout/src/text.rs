@@ -1,7 +1,7 @@
-use std::sync::Mutex;
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
+use ferropdf_core::layout::{ShapedGlyph, ShapedLine};
+use std::sync::Mutex;
 use taffy::prelude::*;
-use ferropdf_core::layout::{ShapedLine, ShapedGlyph};
 
 /// Context attached to text leaf nodes in the Taffy tree.
 /// Stores the info cosmic-text needs to measure the text on demand.
@@ -9,8 +9,8 @@ use ferropdf_core::layout::{ShapedLine, ShapedGlyph};
 #[derive(Debug, Clone)]
 pub struct TextContext {
     pub text: String,
-    pub font_size: f32,    // en pt
-    pub line_height: f32,  // en pt
+    pub font_size: f32,   // en pt
+    pub line_height: f32, // en pt
     pub font_family: String,
     pub bold: bool,
     pub italic: bool,
@@ -31,6 +31,12 @@ pub struct FontDatabase {
     inner: Mutex<FontSystem>,
 }
 
+impl Default for FontDatabase {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FontDatabase {
     /// Crée une nouvelle FontDatabase avec les polices système chargées.
     pub fn new() -> Self {
@@ -41,6 +47,7 @@ impl FontDatabase {
 
     /// Mesure un bloc de texte avec wrapping à la largeur donnée.
     /// Retourne (width, height) en points typographiques.
+    #[allow(clippy::too_many_arguments)]
     pub fn measure(
         &self,
         text: &str,
@@ -79,7 +86,9 @@ impl FontDatabase {
             w = w.max(run.line_w);
             h += run.line_height;
         }
-        if h == 0.0 { h = line_height; }
+        if h == 0.0 {
+            h = line_height;
+        }
         (w.ceil(), h.ceil())
     }
 
@@ -92,7 +101,9 @@ impl FontDatabase {
     /// Accède au fontdb::Database interne de cosmic-text (lecture seule).
     /// Permet de réutiliser la même base de polices pour l'écriture PDF.
     pub fn fontdb(&self) -> FontDbGuard<'_> {
-        FontDbGuard { guard: self.inner.lock().unwrap() }
+        FontDbGuard {
+            guard: self.inner.lock().unwrap(),
+        }
     }
 }
 
@@ -180,6 +191,7 @@ pub fn measure_text(
 
 /// Shape a text node at its final content width and return shaped lines.
 /// Each ShapedLine contains the line's text, width, y-offset, and glyph data.
+#[allow(clippy::too_many_arguments)]
 pub fn shape_text_lines(
     text: &str,
     font_size: f32,
@@ -232,7 +244,7 @@ pub fn shape_text_lines(
 
         for glyph in run.glyphs.iter() {
             glyphs.push(ShapedGlyph {
-                glyph_id: glyph.glyph_id as u16,
+                glyph_id: glyph.glyph_id,
                 x: glyph.x,
                 y: glyph.y,
                 advance: glyph.w,

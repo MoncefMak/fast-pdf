@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use taffy::prelude::*;
+use crate::table_layout;
+use crate::text::TextContext;
+use crate::{style_to_taffy, text};
 use cosmic_text::FontSystem;
 use ferropdf_core::{
-    Document, NodeId, ComputedStyle, Display as FDisplay,
-    LayoutBox, LayoutTree, Rect, Insets, Length,
+    ComputedStyle, Display as FDisplay, Document, Insets, LayoutBox, LayoutTree, Length, NodeId,
+    Rect,
 };
 use ferropdf_style::StyleTree;
-use crate::{style_to_taffy, text};
-use crate::text::TextContext;
-use crate::table_layout;
+use std::collections::HashMap;
+use taffy::prelude::*;
 
 /// Build a LayoutTree from a styled Document using Taffy for layout computation.
 pub fn build_layout(
@@ -25,7 +25,16 @@ pub fn build_layout(
     let root = doc.root();
     let body = find_body(doc, root).unwrap_or(root);
 
-    build_taffy_tree(doc, body, styles, &mut taffy, &mut node_map, &mut table_cell_parent, font_system, available_width)?;
+    build_taffy_tree(
+        doc,
+        body,
+        styles,
+        &mut taffy,
+        &mut node_map,
+        &mut table_cell_parent,
+        font_system,
+        available_width,
+    )?;
 
     let taffy_root = match node_map.get(&body) {
         Some(n) => *n,
@@ -35,25 +44,38 @@ pub fn build_layout(
     // Compute layout with cosmic-text measure function for text leaves.
     // Height is unconstrained (infinite ribbon model) so content flows naturally.
     // Pagination slices the ribbon into pages afterward.
-    taffy.compute_layout_with_measure(
-        taffy_root,
-        Size {
-            width: AvailableSpace::Definite(available_width),
-            height: AvailableSpace::MaxContent,
-        },
-        |known_dimensions, available_space, _node_id, node_context, _style| {
-            if let Some(ctx) = node_context {
-                text::measure_text(ctx, known_dimensions, available_space, font_system)
-            } else {
-                Size::ZERO
-            }
-        },
-    ).map_err(|e| ferropdf_core::FerroError::Layout(format!("Taffy layout error: {:?}", e)))?;
+    taffy
+        .compute_layout_with_measure(
+            taffy_root,
+            Size {
+                width: AvailableSpace::Definite(available_width),
+                height: AvailableSpace::MaxContent,
+            },
+            |known_dimensions, available_space, _node_id, node_context, _style| {
+                if let Some(ctx) = node_context {
+                    text::measure_text(ctx, known_dimensions, available_space, font_system)
+                } else {
+                    Size::ZERO
+                }
+            },
+        )
+        .map_err(|e| ferropdf_core::FerroError::Layout(format!("Taffy layout error: {:?}", e)))?;
 
     // Read results from Taffy and build LayoutBox tree
-    let layout_root = read_layout(doc, body, styles, &taffy, &node_map, &table_cell_parent, 0.0, 0.0)?;
+    let layout_root = read_layout(
+        doc,
+        body,
+        styles,
+        &taffy,
+        &node_map,
+        &table_cell_parent,
+        0.0,
+        0.0,
+    )?;
 
-    Ok(LayoutTree { root: Some(layout_root) })
+    Ok(LayoutTree {
+        root: Some(layout_root),
+    })
 }
 
 fn find_body(doc: &Document, start: NodeId) -> Option<NodeId> {
@@ -76,6 +98,7 @@ fn find_body(doc: &Document, start: NodeId) -> Option<NodeId> {
 ///   - `<thead>`, `<tbody>`, `<tfoot>`, `<tr>` are skipped (not added to Taffy).
 ///   - `<td>` and `<th>` cells are added as direct children of the grid node.
 ///   - `grid-template-columns` is set to `repeat(num_cols, auto)`.
+#[allow(clippy::too_many_arguments)]
 fn build_taffy_tree(
     doc: &Document,
     node_id: NodeId,
@@ -95,7 +118,16 @@ fn build_taffy_tree(
 
     // ── Table: flatten to CSS Grid ──
     if style.display == FDisplay::Table {
-        return build_table_as_grid(doc, node_id, styles, taffy, node_map, table_cell_parent, font_system, available_width);
+        return build_table_as_grid(
+            doc,
+            node_id,
+            styles,
+            taffy,
+            node_map,
+            table_cell_parent,
+            font_system,
+            available_width,
+        );
     }
 
     // ── Text nodes: create leaf with TextContext for cosmic-text measurement ──
@@ -110,10 +142,11 @@ fn build_taffy_tree(
                 italic: style.font_style == ferropdf_core::FontStyle::Italic,
             };
 
-            let taffy_node = taffy.new_leaf_with_context(
-                style_to_taffy::convert(&style),
-                ctx,
-            ).map_err(|e| ferropdf_core::FerroError::Layout(format!("Taffy leaf error: {:?}", e)))?;
+            let taffy_node = taffy
+                .new_leaf_with_context(style_to_taffy::convert(&style), ctx)
+                .map_err(|e| {
+                    ferropdf_core::FerroError::Layout(format!("Taffy leaf error: {:?}", e))
+                })?;
 
             node_map.insert(node_id, taffy_node);
             return Ok(());
@@ -124,7 +157,16 @@ fn build_taffy_tree(
     let mut child_taffy_ids = Vec::new();
 
     for &child_id in &node.children {
-        build_taffy_tree(doc, child_id, styles, taffy, node_map, table_cell_parent, font_system, available_width)?;
+        build_taffy_tree(
+            doc,
+            child_id,
+            styles,
+            taffy,
+            node_map,
+            table_cell_parent,
+            font_system,
+            available_width,
+        )?;
         if let Some(&tid) = node_map.get(&child_id) {
             child_taffy_ids.push(tid);
         }
@@ -150,7 +192,8 @@ fn build_taffy_tree(
         }
     }
 
-    let taffy_node = taffy.new_with_children(taffy_style, &child_taffy_ids)
+    let taffy_node = taffy
+        .new_with_children(taffy_style, &child_taffy_ids)
         .map_err(|e| ferropdf_core::FerroError::Layout(format!("Taffy node error: {:?}", e)))?;
 
     node_map.insert(node_id, taffy_node);
@@ -159,6 +202,7 @@ fn build_taffy_tree(
 
 /// Build a `<table>` element as a CSS Grid in Taffy.
 /// Uses the 4-phase table layout algorithm (CSS 2.1 §17.5).
+#[allow(clippy::too_many_arguments)]
 fn build_table_as_grid(
     doc: &Document,
     table_id: NodeId,
@@ -172,13 +216,8 @@ fn build_table_as_grid(
     let table_style = styles.get(&table_id).cloned().unwrap_or_default();
 
     // Use the full 4-phase table layout algorithm
-    let table_result = table_layout::compute_table_layout(
-        table_id,
-        available_width,
-        doc,
-        styles,
-        font_system,
-    );
+    let table_result =
+        table_layout::compute_table_layout(table_id, available_width, doc, styles, font_system);
 
     // Collect rows/cells for building Taffy child nodes
     let rows = table_layout::collect_table_rows(doc, table_id, styles);
@@ -187,7 +226,16 @@ fn build_table_as_grid(
     let mut cell_taffy_ids = Vec::new();
     for row in &rows {
         for &cell_id in row {
-            build_taffy_tree(doc, cell_id, styles, taffy, node_map, table_cell_parent, font_system, available_width)?;
+            build_taffy_tree(
+                doc,
+                cell_id,
+                styles,
+                taffy,
+                node_map,
+                table_cell_parent,
+                font_system,
+                available_width,
+            )?;
             if let Some(&tid) = node_map.get(&cell_id) {
                 cell_taffy_ids.push(tid);
             }
@@ -210,51 +258,18 @@ fn build_table_as_grid(
         grid_style.grid_template_rows = table_result.taffy_rows;
     }
 
-    let grid_node = taffy.new_with_children(grid_style, &cell_taffy_ids)
-        .map_err(|e| ferropdf_core::FerroError::Layout(format!("Taffy grid node error: {:?}", e)))?;
+    let grid_node = taffy
+        .new_with_children(grid_style, &cell_taffy_ids)
+        .map_err(|e| {
+            ferropdf_core::FerroError::Layout(format!("Taffy grid node error: {:?}", e))
+        })?;
 
     node_map.insert(table_id, grid_node);
     Ok(())
 }
 
-/// Collect all rows in a table. Each row is a Vec of cell NodeIds.
-fn collect_table_rows(doc: &Document, table_id: NodeId, styles: &StyleTree) -> Vec<Vec<NodeId>> {
-    let mut rows = Vec::new();
-    let table_node = doc.get(table_id);
-
-    for &child_id in &table_node.children {
-        let child_style = styles.get(&child_id).cloned().unwrap_or_default();
-        match child_style.display {
-            FDisplay::TableRow => {
-                rows.push(collect_cells(doc, child_id, styles));
-            }
-            FDisplay::TableHeaderGroup | FDisplay::TableRowGroup | FDisplay::TableFooterGroup => {
-                let group_node = doc.get(child_id);
-                for &row_id in &group_node.children {
-                    let row_style = styles.get(&row_id).cloned().unwrap_or_default();
-                    if row_style.display == FDisplay::TableRow {
-                        rows.push(collect_cells(doc, row_id, styles));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    rows
-}
-
-fn collect_cells(doc: &Document, row_id: NodeId, styles: &StyleTree) -> Vec<NodeId> {
-    let row_node = doc.get(row_id);
-    row_node.children.iter()
-        .filter(|&&child_id| {
-            let s = styles.get(&child_id).cloned().unwrap_or_default();
-            s.display == FDisplay::TableCell
-        })
-        .copied()
-        .collect()
-}
-
 /// Read layout results from Taffy and build the LayoutBox tree.
+#[allow(clippy::too_many_arguments)]
 fn read_layout(
     doc: &Document,
     node_id: NodeId,
@@ -273,7 +288,8 @@ fn read_layout(
         None => return Ok(LayoutBox::default()),
     };
 
-    let layout = taffy.layout(taffy_node)
+    let layout = taffy
+        .layout(taffy_node)
         .map_err(|e| ferropdf_core::FerroError::Layout(format!("Taffy read error: {:?}", e)))?;
 
     let x = offset_x + layout.location.x;
@@ -285,8 +301,18 @@ fn read_layout(
     let content = Rect::new(
         x + layout.padding.left + layout.border.left,
         y + layout.padding.top + layout.border.top,
-        (layout.size.width - layout.padding.left - layout.padding.right - layout.border.left - layout.border.right).max(0.0),
-        (layout.size.height - layout.padding.top - layout.padding.bottom - layout.border.top - layout.border.bottom).max(0.0),
+        (layout.size.width
+            - layout.padding.left
+            - layout.padding.right
+            - layout.border.left
+            - layout.border.right)
+            .max(0.0),
+        (layout.size.height
+            - layout.padding.top
+            - layout.padding.bottom
+            - layout.border.top
+            - layout.border.bottom)
+            .max(0.0),
     );
 
     let padding = Insets {
@@ -313,7 +339,16 @@ fn read_layout(
         for row in &rows {
             for &cell_id in row {
                 if node_map.contains_key(&cell_id) {
-                    let child_box = read_layout(doc, cell_id, styles, taffy, node_map, table_cell_parent, x, y)?;
+                    let child_box = read_layout(
+                        doc,
+                        cell_id,
+                        styles,
+                        taffy,
+                        node_map,
+                        table_cell_parent,
+                        x,
+                        y,
+                    )?;
                     children.push(child_box);
                 }
             }
@@ -324,7 +359,16 @@ fn read_layout(
                 continue;
             }
             if node_map.contains_key(&child_id) {
-                let child_box = read_layout(doc, child_id, styles, taffy, node_map, table_cell_parent, x, y)?;
+                let child_box = read_layout(
+                    doc,
+                    child_id,
+                    styles,
+                    taffy,
+                    node_map,
+                    table_cell_parent,
+                    x,
+                    y,
+                )?;
                 children.push(child_box);
             }
         }
@@ -362,66 +406,14 @@ fn read_layout(
 
 fn resolve_margin_insets(style: &ComputedStyle) -> Insets {
     Insets {
-        top:    length_to_px(&style.margin[0]),
-        right:  length_to_px(&style.margin[1]),
+        top: length_to_px(&style.margin[0]),
+        right: length_to_px(&style.margin[1]),
         bottom: length_to_px(&style.margin[2]),
-        left:   length_to_px(&style.margin[3]),
+        left: length_to_px(&style.margin[3]),
     }
 }
 
 fn length_to_px(l: &Length) -> f32 {
-    match l {
-        Length::Pt(v) => *v,
-        Length::Px(v) => *v,
-        Length::Zero => 0.0,
-        _ => 0.0,
-    }
-}
-
-/// Recursively collect all text content from a subtree.
-fn collect_text_content(doc: &Document, node_id: NodeId) -> String {
-    let node = doc.get(node_id);
-    if node.is_text() {
-        return node.text.clone().unwrap_or_default();
-    }
-    let mut result = String::new();
-    for &child_id in &node.children {
-        result.push_str(&collect_text_content(doc, child_id));
-    }
-    result
-}
-
-/// Measure min-content width of text (single line, no wrap) using cosmic-text.
-fn measure_min_content_width(
-    text: &str,
-    font_size: f32,
-    font_family: &str,
-    font_system: &mut FontSystem,
-) -> f32 {
-    if text.trim().is_empty() {
-        return 0.0;
-    }
-    let metrics = cosmic_text::Metrics::new(font_size, font_size * 1.2);
-    let mut buffer = cosmic_text::Buffer::new(font_system, metrics);
-    // No wrap → measure on a single line
-    buffer.set_size(font_system, None, None);
-
-    let family = if font_family.is_empty() {
-        cosmic_text::Family::SansSerif
-    } else {
-        cosmic_text::Family::Name(font_family)
-    };
-
-    let attrs = cosmic_text::Attrs::new().family(family);
-    buffer.set_text(font_system, text, attrs, cosmic_text::Shaping::Advanced);
-    buffer.shape_until_scroll(font_system, false);
-
-    buffer.layout_runs()
-        .map(|r| r.line_w)
-        .fold(0.0_f32, f32::max)
-}
-
-fn resolve_length(l: &Length) -> f32 {
     match l {
         Length::Pt(v) => *v,
         Length::Px(v) => *v,

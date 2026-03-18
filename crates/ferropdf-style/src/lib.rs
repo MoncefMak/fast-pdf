@@ -1,11 +1,11 @@
 mod cascade;
-mod inherit;
 mod compute;
+mod inherit;
 pub mod matching;
 
-use std::collections::HashMap;
 use ferropdf_core::{ComputedStyle, Document, NodeId, NodeType};
 use ferropdf_parse::Stylesheet;
+use std::collections::HashMap;
 
 pub type StyleTree = HashMap<NodeId, ComputedStyle>;
 
@@ -20,9 +20,9 @@ pub type StyleTree = HashMap<NodeId, ComputedStyle>;
 /// 5. Apply cascade: non-important → important → inline styles
 /// 6. Inherit from parent, resolve relative units
 pub fn resolve(
-    document:    &Document,
+    document: &Document,
     stylesheets: &[Stylesheet],
-    ua_css:      &str,
+    ua_css: &str,
     _page_width: f32,
 ) -> ferropdf_core::Result<StyleTree> {
     // Parse UA stylesheet
@@ -40,7 +40,14 @@ pub fn resolve(
     let mut style_tree = StyleTree::new();
     let root_font_size = 12.0_f32; // 16px × 0.75 = 12pt
 
-    resolve_recursive(document, root, &rules, &mut style_tree, None, root_font_size);
+    resolve_recursive(
+        document,
+        root,
+        &rules,
+        &mut style_tree,
+        None,
+        root_font_size,
+    );
 
     Ok(style_tree)
 }
@@ -69,9 +76,15 @@ fn resolve_recursive(
 
         // Apply inline style attribute (highest specificity for non-!important)
         if let Some(inline) = node.attr("style") {
-            if let Ok(sheet) = ferropdf_parse::parse_stylesheet(&format!("__inline__ {{ {} }}", inline)) {
+            if let Ok(sheet) =
+                ferropdf_parse::parse_stylesheet(&format!("__inline__ {{ {} }}", inline))
+            {
                 for rule in &sheet.rules {
-                    cascade::apply_inline_declarations(&mut style, &rule.declarations, root_font_size);
+                    cascade::apply_inline_declarations(
+                        &mut style,
+                        &rule.declarations,
+                        root_font_size,
+                    );
                 }
             }
         }

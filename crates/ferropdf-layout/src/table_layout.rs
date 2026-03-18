@@ -10,15 +10,13 @@
 // les TrackSizingFunction Taffy pour le CSS Grid.
 // =============================================================================
 
-use ferropdf_core::{Document, NodeId, Length};
-use ferropdf_style::StyleTree;
-use cosmic_text::{Buffer, FontSystem, Metrics, Attrs, Family, Shaping, Wrap};
-use taffy::{
-    TrackSizingFunction, MinMax,
-    MinTrackSizingFunction, MaxTrackSizingFunction,
-    LengthPercentage,
-};
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap};
 use ferropdf_core::Display as FDisplay;
+use ferropdf_core::{Document, Length, NodeId};
+use ferropdf_style::StyleTree;
+use taffy::{
+    LengthPercentage, MaxTrackSizingFunction, MinMax, MinTrackSizingFunction, TrackSizingFunction,
+};
 
 // =============================================================================
 // STRUCTURES DE DONNÉES
@@ -69,14 +67,11 @@ pub fn compute_table_layout(
     }
 
     // Phase 1: compute column widths
-    let column_widths = compute_column_widths(
-        &rows, num_cols, table_width, doc, styles, font_system,
-    );
+    let column_widths =
+        compute_column_widths(&rows, num_cols, table_width, doc, styles, font_system);
 
     // Phase 2: compute row heights
-    let row_heights = compute_row_heights(
-        &rows, &column_widths, doc, styles, font_system,
-    );
+    let row_heights = compute_row_heights(&rows, &column_widths, doc, styles, font_system);
 
     let total_width: f32 = column_widths.iter().sum();
     let total_height: f32 = row_heights.iter().sum();
@@ -135,8 +130,11 @@ fn compute_column_widths(
                     }
                     let style = styles.get(&cell_id).cloned().unwrap_or_default();
                     let font_size = style.font_size;
-                    let font_family = style.font_family.first()
-                        .cloned().unwrap_or_else(|| "sans-serif".to_string());
+                    let font_family = style
+                        .font_family
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "sans-serif".to_string());
                     let pad_h = resolve_px(&style.padding[1]) + resolve_px(&style.padding[3]);
 
                     measure_min_content_width(&text, font_size, &font_family, font_system) + pad_h
@@ -195,8 +193,11 @@ fn compute_row_heights(
                     let style = styles.get(&cell_id).cloned().unwrap_or_default();
                     let cell_width = column_widths.get(col_idx).cloned().unwrap_or(50.0);
                     let font_size = style.font_size;
-                    let font_family = style.font_family.first()
-                        .cloned().unwrap_or_else(|| "sans-serif".to_string());
+                    let font_family = style
+                        .font_family
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "sans-serif".to_string());
                     let padding_v = resolve_px(&style.padding[0]) + resolve_px(&style.padding[2]);
                     let padding_h = resolve_px(&style.padding[1]) + resolve_px(&style.padding[3]);
                     // Measure text at the content width (column width minus cell padding),
@@ -258,7 +259,10 @@ fn measure_min_content_width(
     let attrs = Attrs::new().family(Family::Name(font_family));
     buffer.set_text(font_system, text, attrs, Shaping::Advanced);
     buffer.shape_until_scroll(font_system, false);
-    buffer.layout_runs().map(|run| run.line_w).fold(0.0_f32, f32::max)
+    buffer
+        .layout_runs()
+        .map(|run| run.line_w)
+        .fold(0.0_f32, f32::max)
 }
 
 fn measure_text_height(
@@ -287,7 +291,11 @@ fn measure_text_height(
 // =============================================================================
 
 /// Collect all rows in a table. Each row is a Vec of cell NodeIds.
-pub fn collect_table_rows(doc: &Document, table_id: NodeId, styles: &StyleTree) -> Vec<Vec<NodeId>> {
+pub fn collect_table_rows(
+    doc: &Document,
+    table_id: NodeId,
+    styles: &StyleTree,
+) -> Vec<Vec<NodeId>> {
     let mut rows = Vec::new();
     let table_node = doc.get(table_id);
 
@@ -314,7 +322,9 @@ pub fn collect_table_rows(doc: &Document, table_id: NodeId, styles: &StyleTree) 
 
 fn collect_cells(doc: &Document, row_id: NodeId, styles: &StyleTree) -> Vec<NodeId> {
     let row_node = doc.get(row_id);
-    row_node.children.iter()
+    row_node
+        .children
+        .iter()
         .filter(|&&child_id| {
             let s = styles.get(&child_id).cloned().unwrap_or_default();
             s.display == FDisplay::TableCell
@@ -347,9 +357,9 @@ fn collect_text_raw(doc: &Document, node_id: NodeId, out: &mut String) {
 
 fn resolve_px(length: &Length) -> f32 {
     match length {
-        Length::Pt(v)  => *v,
+        Length::Pt(v) => *v,
         Length::Px(px) => *px,
-        Length::Zero   => 0.0,
-        _              => 0.0,
+        Length::Zero => 0.0,
+        _ => 0.0,
     }
 }

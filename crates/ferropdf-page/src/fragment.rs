@@ -1,5 +1,5 @@
-use ferropdf_core::{LayoutBox, PageConfig, PageBreak, PageBreakInside};
 use ferropdf_core::layout::Page;
+use ferropdf_core::{LayoutBox, PageBreak, PageBreakInside, PageConfig};
 
 /// Fragment a layout tree into pages based on available height.
 pub fn fragment_into_pages(root: &LayoutBox, config: &PageConfig) -> Vec<Page> {
@@ -8,7 +8,14 @@ pub fn fragment_into_pages(root: &LayoutBox, config: &PageConfig) -> Vec<Page> {
     let mut current_content: Vec<LayoutBox> = Vec::new();
     let mut current_y = 0.0_f32;
 
-    fragment_box(root, config, page_height, &mut pages, &mut current_content, &mut current_y);
+    fragment_box(
+        root,
+        config,
+        page_height,
+        &mut pages,
+        &mut current_content,
+        &mut current_y,
+    );
 
     // Flush remaining content
     if !current_content.is_empty() {
@@ -30,6 +37,7 @@ pub fn fragment_into_pages(root: &LayoutBox, config: &PageConfig) -> Vec<Page> {
     pages
 }
 
+#[allow(clippy::only_used_in_recursion)]
 fn fragment_box(
     layout_box: &LayoutBox,
     config: &PageConfig,
@@ -60,7 +68,14 @@ fn fragment_box(
     } else if !layout_box.children.is_empty() {
         // Box has children and doesn't fit — recurse into children to fragment them
         for child in &layout_box.children {
-            fragment_box(child, config, page_height, pages, current_content, current_y);
+            fragment_box(
+                child,
+                config,
+                page_height,
+                pages,
+                current_content,
+                current_y,
+            );
         }
     } else if current_content.is_empty() {
         // Anti-infinite-loop: leaf box too large even alone — force placement

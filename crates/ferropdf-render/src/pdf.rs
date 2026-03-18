@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-use pdf_writer::{Pdf, Ref, Content, Finish, Name, Str, TextStr, Rect as PdfWriterRect, Filter};
-use pdf_writer::types::FontFlags;
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
-use std::io::Write;
-use ferropdf_core::{PageConfig, FerroError};
 use crate::display_list::{DrawOp, PageDisplayList};
 use crate::RenderOptions;
+use ferropdf_core::{FerroError, PageConfig};
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
+use pdf_writer::types::FontFlags;
+use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfWriterRect, Ref, Str, TextStr};
+use std::collections::HashMap;
+use std::io::Write;
 
 // =============================================================================
 // CONVERSION COORDONNÉES HTML/CSS → PDF
@@ -24,25 +24,19 @@ use crate::RenderOptions;
 /// Rectangle en coordonnées PDF (origine bas-gauche, unité = points).
 #[derive(Debug, Clone, Copy)]
 struct PdfRect {
-    x:      f32, // points, depuis le bord gauche
-    y:      f32, // points, depuis le bord BAS (convention PDF)
-    width:  f32, // points
+    x: f32,      // points, depuis le bord gauche
+    y: f32,      // points, depuis le bord BAS (convention PDF)
+    width: f32,  // points
     height: f32, // points
 }
 
 /// Convertit un rectangle (origine haut-gauche, pt)
 /// en rectangle PDF (origine bas-gauche, pt).
 /// Seule l'axe Y est inversé, pas de changement d'unité.
-fn to_pdf_rect(
-    x:              f32,
-    y:              f32,
-    width:          f32,
-    height:         f32,
-    page_height_pt: f32,
-) -> PdfRect {
+fn to_pdf_rect(x: f32, y: f32, width: f32, height: f32, page_height_pt: f32) -> PdfRect {
     PdfRect {
         x,
-        y:      page_height_pt - y - height,
+        y: page_height_pt - y - height,
         width,
         height,
     }
@@ -89,7 +83,11 @@ pub fn write_pdf(
 ) -> ferropdf_core::Result<Vec<u8>> {
     let mut pdf = Pdf::new();
     let mut ref_id = 1u32;
-    let mut next_ref = || { let r = Ref::new(ref_id as i32); ref_id += 1; r };
+    let mut next_ref = || {
+        let r = Ref::new(ref_id as i32);
+        ref_id += 1;
+        r
+    };
 
     let catalog_ref = next_ref();
     let page_tree_ref = next_ref();
@@ -126,7 +124,13 @@ pub fn write_pdf(
     // Phase 1: Discover which fonts are needed
     for display_list in pages {
         for op in &display_list.ops {
-            if let DrawOp::DrawText { font_family, bold, italic, .. } = op {
+            if let DrawOp::DrawText {
+                font_family,
+                bold,
+                italic,
+                ..
+            } = op
+            {
                 let family_name = font_family.first().cloned().unwrap_or_default();
                 let key = FontKey {
                     family: family_name.clone(),
@@ -137,7 +141,7 @@ pub fn write_pdf(
                     continue;
                 }
                 // Try to resolve from system fonts
-                match load_font_data(&font_db, &family_name, *bold, *italic) {
+                match load_font_data(font_db, &family_name, *bold, *italic) {
                     Some(data) => {
                         font_name_counter += 1;
                         let pdf_name = format!("F{}", font_name_counter);
@@ -156,7 +160,14 @@ pub fn write_pdf(
     // Phase 2: Collect all glyph IDs used per font
     for display_list in pages {
         for op in &display_list.ops {
-            if let DrawOp::DrawText { text, font_family, bold, italic, .. } = op {
+            if let DrawOp::DrawText {
+                text,
+                font_family,
+                bold,
+                italic,
+                ..
+            } = op
+            {
                 let family_name = font_family.first().cloned().unwrap_or_default();
                 let key = FontKey {
                     family: family_name,
@@ -164,7 +175,10 @@ pub fn write_pdf(
                     italic: *italic,
                 };
                 if let Some(Some(pdf_name)) = font_cache.get(&key) {
-                    if let (Some(raw_data), Some(used_gids)) = (font_raw_data.get(pdf_name), font_used_chars.get_mut(pdf_name)) {
+                    if let (Some(raw_data), Some(used_gids)) = (
+                        font_raw_data.get(pdf_name),
+                        font_used_chars.get_mut(pdf_name),
+                    ) {
                         if let Ok(face) = ttf_parser::Face::parse(raw_data, 0) {
                             // Always include .notdef (GID 0)
                             used_gids.insert(0);
@@ -263,7 +277,9 @@ pub fn write_pdf(
                         content.fill_nonzero();
                     }
                 }
-                DrawOp::StrokeRect { rect, color, width, .. } => {
+                DrawOp::StrokeRect {
+                    rect, color, width, ..
+                } => {
                     content.set_stroke_rgb(color.r, color.g, color.b);
                     content.set_line_width(*width);
                     // Borders are lines — use move_to/line_to for precise placement
@@ -291,7 +307,19 @@ pub fn write_pdf(
                         content.stroke();
                     }
                 }
-                DrawOp::DrawText { text, x, y, font_size, color, font_family, bold, italic, text_align, container_width, .. } => {
+                DrawOp::DrawText {
+                    text,
+                    x,
+                    y,
+                    font_size,
+                    color,
+                    font_family,
+                    bold,
+                    italic,
+                    text_align,
+                    container_width,
+                    ..
+                } => {
                     let family_name = font_family.first().cloned().unwrap_or_default();
                     let key = FontKey {
                         family: family_name,
@@ -300,9 +328,13 @@ pub fn write_pdf(
                     };
 
                     // Look up embedded font data for this key
-                    let ef_option = font_cache.get(&key)
-                        .and_then(|v| v.as_ref())
-                        .and_then(|pdf_name| embedded_fonts.iter().find(|f| &f.pdf_name == pdf_name));
+                    let ef_option =
+                        font_cache
+                            .get(&key)
+                            .and_then(|v| v.as_ref())
+                            .and_then(|pdf_name| {
+                                embedded_fonts.iter().find(|f| &f.pdf_name == pdf_name)
+                            });
                     let font_data = ef_option.map(|ef| ef.original_data.as_slice());
 
                     // Font size is already in pt — no conversion needed
@@ -320,7 +352,9 @@ pub fn write_pdf(
                     let aligned_x = match text_align {
                         ferropdf_core::TextAlign::Left => *x,
                         ferropdf_core::TextAlign::Right => *x + container_width - line_width_pt,
-                        ferropdf_core::TextAlign::Center => *x + (container_width - line_width_pt) / 2.0,
+                        ferropdf_core::TextAlign::Center => {
+                            *x + (container_width - line_width_pt) / 2.0
+                        }
                         ferropdf_core::TextAlign::Justify => *x,
                     };
 
@@ -335,11 +369,21 @@ pub fn write_pdf(
                         Some(ef) => {
                             content.set_font(Name(ef.pdf_name.as_bytes()), font_size_pt);
                             content.next_line(pdf_x, pdf_y);
-                            let encoded = encode_for_cid_font(line_text, &ef.original_data, ef.gid_remapping.as_ref());
+                            let encoded = encode_for_cid_font(
+                                line_text,
+                                &ef.original_data,
+                                ef.gid_remapping.as_ref(),
+                            );
                             content.show(Str(&encoded));
                         }
                         None => {
-                            let font_name = if *bold { "F2" } else if *italic { "F3" } else { "F1" };
+                            let font_name = if *bold {
+                                "F2"
+                            } else if *italic {
+                                "F3"
+                            } else {
+                                "F1"
+                            };
                             content.set_font(Name(font_name.as_bytes()), font_size_pt);
                             content.next_line(pdf_x, pdf_y);
                             content.show(Str(&encode_winansi(line_text)));
@@ -348,8 +392,12 @@ pub fn write_pdf(
 
                     content.end_text();
                 }
-                DrawOp::Save => { content.save_state(); }
-                DrawOp::Restore => { content.restore_state(); }
+                DrawOp::Save => {
+                    content.save_state();
+                }
+                DrawOp::Restore => {
+                    content.restore_state();
+                }
                 _ => {}
             }
         }
@@ -395,12 +443,17 @@ fn load_font_data(
     }
 
     let query = fontdb::Query {
-        families: &[
-            fontdb::Family::Name(family),
-            fontdb::Family::SansSerif,
-        ],
-        weight: if bold { fontdb::Weight(700) } else { fontdb::Weight(400) },
-        style: if italic { fontdb::Style::Italic } else { fontdb::Style::Normal },
+        families: &[fontdb::Family::Name(family), fontdb::Family::SansSerif],
+        weight: if bold {
+            fontdb::Weight(700)
+        } else {
+            fontdb::Weight(400)
+        },
+        style: if italic {
+            fontdb::Style::Italic
+        } else {
+            fontdb::Style::Normal
+        },
         ..Default::default()
     };
 
@@ -453,12 +506,14 @@ fn write_cid_font(pdf: &mut Pdf, ef: &EmbeddedFont) -> ferropdf_core::Result<()>
         .find_map(|n| n.to_string())
         .or_else(|| {
             // Fallback: try FULL_NAME (4), then FAMILY (1)
-            face.names().into_iter()
+            face.names()
+                .into_iter()
                 .filter(|n| n.name_id == ttf_parser::name_id::FULL_NAME)
                 .find_map(|n| n.to_string())
         })
         .or_else(|| {
-            face.names().into_iter()
+            face.names()
+                .into_iter()
                 .filter(|n| n.name_id == ttf_parser::name_id::FAMILY)
                 .find_map(|n| n.to_string())
         })
@@ -474,7 +529,7 @@ fn write_cid_font(pdf: &mut Pdf, ef: &EmbeddedFont) -> ferropdf_core::Result<()>
     descriptor.ascent(ascender);
     descriptor.descent(descender);
     descriptor.cap_height(cap_height);
-    descriptor.stem_v((80.0 + ascender * 0.08) as f32);
+    descriptor.stem_v(80.0 + ascender * 0.08);
     descriptor.font_file2(ef.font_stream_ref);
     descriptor.finish();
 
@@ -519,8 +574,7 @@ fn write_cid_font(pdf: &mut Pdf, ef: &EmbeddedFont) -> ferropdf_core::Result<()>
             let mut run_start = glyph_widths[0].0;
             let mut run_widths: Vec<f32> = vec![glyph_widths[0].1];
 
-            for i in 1..glyph_widths.len() {
-                let (gid, w) = glyph_widths[i];
+            for &(gid, w) in &glyph_widths[1..] {
                 if gid == run_start + run_widths.len() as u16 {
                     // Consecutive
                     run_widths.push(w);
@@ -558,7 +612,11 @@ fn write_cid_font(pdf: &mut Pdf, ef: &EmbeddedFont) -> ferropdf_core::Result<()>
 
 // ── Text encoding for CIDFont (glyph IDs as big-endian u16) ──
 
-fn encode_for_cid_font(text: &str, font_data: &[u8], gid_remapping: Option<&HashMap<u16, u16>>) -> Vec<u8> {
+fn encode_for_cid_font(
+    text: &str,
+    font_data: &[u8],
+    gid_remapping: Option<&HashMap<u16, u16>>,
+) -> Vec<u8> {
     let face = match ttf_parser::Face::parse(font_data, 0) {
         Ok(f) => f,
         Err(_) => return encode_winansi(text), // fallback
@@ -580,7 +638,10 @@ fn encode_for_cid_font(text: &str, font_data: &[u8], gid_remapping: Option<&Hash
 
 // ── ToUnicode CMap builder ──
 
-fn build_tounicode_cmap(face: &ttf_parser::Face, gid_remapping: Option<&HashMap<u16, u16>>) -> String {
+fn build_tounicode_cmap(
+    face: &ttf_parser::Face,
+    gid_remapping: Option<&HashMap<u16, u16>>,
+) -> String {
     // Build a mapping of (remapped) glyph ID → Unicode codepoint
     let mut gid_to_unicode: HashMap<u16, char> = HashMap::new();
 
@@ -713,11 +774,7 @@ fn fontdb_flags(face: &ttf_parser::Face) -> FontFlags {
 
 /// Measure text width using actual glyph advances from the embedded font.
 /// Falls back to a rough estimate if font data is unavailable.
-fn measure_text_width(
-    text: &str,
-    font_size: f32,
-    font_data: Option<&[u8]>,
-) -> f32 {
+fn measure_text_width(text: &str, font_size: f32, font_data: Option<&[u8]>) -> f32 {
     if let Some(data) = font_data {
         if let Ok(face) = ttf_parser::Face::parse(data, 0) {
             let units_per_em = face.units_per_em() as f32;
@@ -781,4 +838,3 @@ fn unicode_to_winansi(c: char) -> u8 {
         _ => b'?',
     }
 }
-

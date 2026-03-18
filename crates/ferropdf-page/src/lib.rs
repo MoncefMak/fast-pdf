@@ -1,9 +1,11 @@
-mod fragment;
+#[allow(dead_code)]
 mod at_page;
+#[allow(dead_code)]
+mod fragment;
 pub mod pagination;
 
-use ferropdf_core::{LayoutTree, PageConfig};
 pub use ferropdf_core::layout::Page;
+use ferropdf_core::{LayoutTree, PageConfig};
 
 /// Paginate a layout tree into individual pages.
 pub fn paginate(

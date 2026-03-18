@@ -66,7 +66,7 @@ fn resolve_length_em_rem(length: &mut Length, font_size: f32, root_font_size: f3
     match length {
         Length::Em(v) => *length = Length::Pt(*v * font_size),
         Length::Rem(v) => *length = Length::Pt(*v * root_font_size),
-        Length::Px(v) => *length = Length::Pt(*v * 0.75),   // 1px = 72/96 pt
+        Length::Px(v) => *length = Length::Pt(*v * 0.75), // 1px = 72/96 pt
         Length::Mm(v) => *length = Length::Pt(*v * 2.834_646),
         _ => {} // Pt, Percent, Auto, Zero, None — keep as is
     }

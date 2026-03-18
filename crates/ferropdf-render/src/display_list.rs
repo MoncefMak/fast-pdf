@@ -1,7 +1,8 @@
-use ferropdf_core::{Color, Rect, BorderStyle};
+use ferropdf_core::{BorderStyle, Color, Rect};
 
 /// A drawing operation for rendering.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum DrawOp {
     /// Fill a rectangle with a color
     FillRect {
@@ -30,24 +31,20 @@ pub enum DrawOp {
         container_width: f32,
     },
     /// Draw an image
-    DrawImage {
-        src: String,
-        rect: Rect,
-    },
+    DrawImage { src: String, rect: Rect },
     /// Save graphics state
     Save,
     /// Restore graphics state
     Restore,
     /// Set clip rect
-    ClipRect {
-        rect: Rect,
-    },
+    ClipRect { rect: Rect },
     /// Set opacity
     SetOpacity(f32),
 }
 
 /// A display list for one page.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PageDisplayList {
     pub ops: Vec<DrawOp>,
     pub page_number: u32,

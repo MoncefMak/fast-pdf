@@ -1,4 +1,4 @@
-use cssparser::{Parser, ParserInput, Token, ParseError};
+use cssparser::{ParseError, Parser, ParserInput, Token};
 
 /// A parsed CSS stylesheet
 #[derive(Debug, Clone)]
@@ -90,6 +90,7 @@ pub enum CssProperty {
 }
 
 impl CssProperty {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "display" => CssProperty::Display,
@@ -189,7 +190,8 @@ impl CssValue {
             CssValue::Percentage(v) => format!("{}%", v),
             CssValue::Color(s) => s.clone(),
             CssValue::Keyword(s) => s.clone(),
-            CssValue::Multiple(vals) => vals.iter()
+            CssValue::Multiple(vals) => vals
+                .iter()
                 .map(|v| v.raw_string())
                 .collect::<Vec<_>>()
                 .join(" "),
@@ -282,20 +284,25 @@ fn parse_qualified_rule(parser: &mut Parser<'_, '_>) -> Option<StyleRule> {
     }
 
     // Parse declarations inside the block
-    let declarations = parser.parse_nested_block(|p| {
-        let mut decls = Vec::new();
-        while !p.is_exhausted() {
-            if let Some(decl) = parse_declaration(p) {
-                decls.push(decl);
-            } else {
-                // Skip to next semicolon or end
-                let _ = p.next();
+    let declarations = parser
+        .parse_nested_block(|p| {
+            let mut decls = Vec::new();
+            while !p.is_exhausted() {
+                if let Some(decl) = parse_declaration(p) {
+                    decls.push(decl);
+                } else {
+                    // Skip to next semicolon or end
+                    let _ = p.next();
+                }
             }
-        }
-        Ok::<_, ParseError<'_, ()>>(decls)
-    }).unwrap_or_default();
+            Ok::<_, ParseError<'_, ()>>(decls)
+        })
+        .unwrap_or_default();
 
-    Some(StyleRule { selectors, declarations })
+    Some(StyleRule {
+        selectors,
+        declarations,
+    })
 }
 
 fn parse_declaration(parser: &mut Parser<'_, '_>) -> Option<Declaration> {
@@ -335,7 +342,11 @@ fn parse_declaration(parser: &mut Parser<'_, '_>) -> Option<Declaration> {
     let property = CssProperty::from_str(&name);
     let value = parse_css_value(&raw_value);
 
-    Some(Declaration { property, value, important })
+    Some(Declaration {
+        property,
+        value,
+        important,
+    })
 }
 
 fn parse_css_value(raw: &str) -> CssValue {
@@ -347,16 +358,16 @@ fn parse_css_value(raw: &str) -> CssValue {
     }
 
     // Try as percentage
-    if raw.ends_with('%') {
-        if let Ok(n) = raw[..raw.len()-1].trim().parse::<f32>() {
+    if let Some(v) = raw.strip_suffix('%') {
+        if let Ok(n) = v.trim().parse::<f32>() {
             return CssValue::Percentage(n);
         }
     }
 
     // Try as length
     for unit in &["px", "pt", "em", "rem", "mm", "cm", "in", "vh", "vw"] {
-        if raw.ends_with(unit) {
-            if let Ok(n) = raw[..raw.len()-unit.len()].trim().parse::<f32>() {
+        if let Some(v) = raw.strip_suffix(unit) {
+            if let Ok(n) = v.trim().parse::<f32>() {
                 return CssValue::Length(n, unit.to_string());
             }
         }

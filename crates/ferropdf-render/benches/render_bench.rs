@@ -88,5 +88,11 @@ fn bench_invoice_cached(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_simple, bench_invoice, bench_simple_cached, bench_invoice_cached);
+criterion_group!(
+    benches,
+    bench_simple,
+    bench_invoice,
+    bench_simple_cached,
+    bench_invoice_cached
+);
 criterion_main!(benches);

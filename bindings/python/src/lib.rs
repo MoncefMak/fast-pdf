@@ -2,20 +2,20 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use std::sync::OnceLock;
 
-pyo3::create_exception!(ferropdf, FerroError,  pyo3::exceptions::PyRuntimeError);
-pyo3::create_exception!(ferropdf, ParseError,  FerroError);
+pyo3::create_exception!(ferropdf, FerroError, pyo3::exceptions::PyRuntimeError);
+pyo3::create_exception!(ferropdf, ParseError, FerroError);
 pyo3::create_exception!(ferropdf, LayoutError, FerroError);
-pyo3::create_exception!(ferropdf, FontError,   FerroError);
+pyo3::create_exception!(ferropdf, FontError, FerroError);
 pyo3::create_exception!(ferropdf, RenderError, FerroError);
 
 #[pyclass(name = "Options")]
 #[derive(Clone, Debug)]
 pub struct PyOptions {
     pub page_size: String,
-    pub margin:    String,
-    pub base_url:  Option<String>,
-    pub title:     Option<String>,
-    pub author:    Option<String>,
+    pub margin: String,
+    pub base_url: Option<String>,
+    pub title: Option<String>,
+    pub author: Option<String>,
 }
 
 #[pymethods]
@@ -30,20 +30,25 @@ impl PyOptions {
     ))]
     fn new(
         page_size: &str,
-        margin:    &str,
-        base_url:  Option<String>,
-        title:     Option<String>,
-        author:    Option<String>,
+        margin: &str,
+        base_url: Option<String>,
+        title: Option<String>,
+        author: Option<String>,
     ) -> Self {
         Self {
             page_size: page_size.to_string(),
-            margin:    margin.to_string(),
-            base_url, title, author,
+            margin: margin.to_string(),
+            base_url,
+            title,
+            author,
         }
     }
 
     fn __repr__(&self) -> String {
-        format!("Options(page_size='{}', margin='{}')", self.page_size, self.margin)
+        format!(
+            "Options(page_size='{}', margin='{}')",
+            self.page_size, self.margin
+        )
     }
 }
 
@@ -73,10 +78,10 @@ impl PyEngine {
         Self {
             options: options.unwrap_or_else(|| PyOptions {
                 page_size: "A4".to_string(),
-                margin:    "20mm".to_string(),
-                base_url:  None,
-                title:     None,
-                author:    None,
+                margin: "20mm".to_string(),
+                base_url: None,
+                title: None,
+                author: None,
             }),
             font_db: OnceLock::new(),
         }
@@ -96,7 +101,7 @@ impl PyEngine {
 
         match result {
             Ok(bytes) => Ok(PyBytes::new_bound(py, &bytes)),
-            Err(e)    => Err(to_py_err(e)),
+            Err(e) => Err(to_py_err(e)),
         }
     }
 
@@ -110,22 +115,31 @@ impl PyEngine {
 #[pyfunction]
 #[pyo3(signature = (html, base_url = None, options = None))]
 fn from_html<'py>(
-    py:       Python<'py>,
-    html:     &str,
+    py: Python<'py>,
+    html: &str,
     base_url: Option<&str>,
-    options:  Option<PyOptions>,
+    options: Option<PyOptions>,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let mut opts = options.unwrap_or_else(|| PyOptions {
-        page_size: "A4".to_string(), margin: "20mm".to_string(),
-        base_url: None, title: None, author: None,
+        page_size: "A4".to_string(),
+        margin: "20mm".to_string(),
+        base_url: None,
+        title: None,
+        author: None,
     });
-    if let Some(u) = base_url { opts.base_url = Some(u.to_string()); }
+    if let Some(u) = base_url {
+        opts.base_url = Some(u.to_string());
+    }
     PyEngine::new(Some(opts)).render(py, html)
 }
 
 #[pyfunction]
 #[pyo3(signature = (path, options = None))]
-fn from_file<'py>(py: Python<'py>, path: &str, options: Option<PyOptions>) -> PyResult<Bound<'py, PyBytes>> {
+fn from_file<'py>(
+    py: Python<'py>,
+    path: &str,
+    options: Option<PyOptions>,
+) -> PyResult<Bound<'py, PyBytes>> {
     let html = std::fs::read_to_string(path)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
     from_html(py, &html, None, options)
@@ -134,11 +148,11 @@ fn from_file<'py>(py: Python<'py>, path: &str, options: Option<PyOptions>) -> Py
 #[pyfunction]
 #[pyo3(signature = (html, output_path, base_url = None, options = None))]
 fn write_pdf(
-    py:          Python<'_>,
-    html:        &str,
+    py: Python<'_>,
+    html: &str,
     output_path: &str,
-    base_url:    Option<&str>,
-    options:     Option<PyOptions>,
+    base_url: Option<&str>,
+    options: Option<PyOptions>,
 ) -> PyResult<()> {
     let bytes = from_html(py, html, base_url, options)?;
     std::fs::write(output_path, bytes.as_bytes())
@@ -149,14 +163,14 @@ fn write_pdf(
 fn _ferropdf(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOptions>()?;
     m.add_class::<PyEngine>()?;
-    m.add_function(wrap_pyfunction!(from_html,  m)?)?;
-    m.add_function(wrap_pyfunction!(from_file,  m)?)?;
-    m.add_function(wrap_pyfunction!(write_pdf,  m)?)?;
-    m.add("FerroError",  py.get_type::<FerroError>())?;
-    m.add("ParseError",  py.get_type::<ParseError>())?;
-    m.add("LayoutError", py.get_type::<LayoutError>())?;
-    m.add("FontError",   py.get_type::<FontError>())?;
-    m.add("RenderError", py.get_type::<RenderError>())?;
+    m.add_function(wrap_pyfunction!(from_html, m)?)?;
+    m.add_function(wrap_pyfunction!(from_file, m)?)?;
+    m.add_function(wrap_pyfunction!(write_pdf, m)?)?;
+    m.add("FerroError", py.get_type_bound::<FerroError>())?;
+    m.add("ParseError", py.get_type_bound::<ParseError>())?;
+    m.add("LayoutError", py.get_type_bound::<LayoutError>())?;
+    m.add("FontError", py.get_type_bound::<FontError>())?;
+    m.add("RenderError", py.get_type_bound::<RenderError>())?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
@@ -164,11 +178,11 @@ fn _ferropdf(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 fn to_py_err(e: ferropdf_core::FerroError) -> PyErr {
     use ferropdf_core::FerroError::*;
     match e {
-        HtmlParse(m) | CssParse(m) => PyErr::new::<ParseError,  _>(m),
-        Layout(m)                  => PyErr::new::<LayoutError, _>(m),
-        Font(m)                    => PyErr::new::<FontError,   _>(m),
-        PdfWrite(m)                => PyErr::new::<RenderError, _>(m),
-        Io(e)  => PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()),
-        other  => PyErr::new::<FerroError, _>(other.to_string()),
+        HtmlParse(m) | CssParse(m) => PyErr::new::<ParseError, _>(m),
+        Layout(m) => PyErr::new::<LayoutError, _>(m),
+        Font(m) => PyErr::new::<FontError, _>(m),
+        PdfWrite(m) => PyErr::new::<RenderError, _>(m),
+        Io(e) => PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()),
+        other => PyErr::new::<FerroError, _>(other.to_string()),
     }
 }

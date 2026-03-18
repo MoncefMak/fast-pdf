@@ -2,7 +2,7 @@ mod display_list;
 mod painter;
 mod pdf;
 
-use ferropdf_core::{PageConfig, PageSize, PageMargins};
+use ferropdf_core::{PageConfig, PageMargins, PageSize};
 pub use ferropdf_layout::FontDatabase;
 
 /// Rendering options passed from Python bindings.
@@ -63,18 +63,18 @@ pub fn render_with_cache(
         };
 
         match std::fs::read_to_string(&path) {
-            Ok(css_content) => {
-                match ferropdf_parse::parse_stylesheet(&css_content) {
-                    Ok(sheet) => stylesheets.push(sheet),
-                    Err(e) => eprintln!(
-                        "[ferropdf] warning: failed to parse {}: {}",
-                        path.display(), e
-                    ),
-                }
-            }
+            Ok(css_content) => match ferropdf_parse::parse_stylesheet(&css_content) {
+                Ok(sheet) => stylesheets.push(sheet),
+                Err(e) => eprintln!(
+                    "[ferropdf] warning: failed to parse {}: {}",
+                    path.display(),
+                    e
+                ),
+            },
             Err(e) => eprintln!(
                 "[ferropdf] warning: could not read {}: {}",
-                path.display(), e
+                path.display(),
+                e
             ),
         }
     }
@@ -107,7 +107,8 @@ pub fn render_with_cache(
     let pages = ferropdf_page::paginate(&layout_tree, &page_config)?;
 
     // 7. Build display lists
-    let display_lists: Vec<_> = pages.iter()
+    let display_lists: Vec<_> = pages
+        .iter()
         .map(|page| painter::paint_page(page, &page_config))
         .collect();
 

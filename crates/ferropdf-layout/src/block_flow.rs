@@ -11,7 +11,7 @@
 // et applique position: relative/absolute.
 // =============================================================================
 
-use ferropdf_core::{LayoutBox, LayoutTree, ComputedStyle, Position, Length, Display as FDisplay};
+use ferropdf_core::{ComputedStyle, Display as FDisplay, LayoutBox, LayoutTree, Length, Position};
 
 // =============================================================================
 // STRUCTURES DE DONNÉES
@@ -62,9 +62,16 @@ fn layout_block_children(parent: &mut LayoutBox, ctx: &mut BlockFormattingContex
     // Block flow only applies to block-level containers.
     // Skip tables (grid), flex, inline — their children are positioned by Taffy.
     match parent.style.display {
-        FDisplay::Table | FDisplay::TableRow | FDisplay::TableCell
-        | FDisplay::TableHeaderGroup | FDisplay::TableRowGroup | FDisplay::TableFooterGroup
-        | FDisplay::Flex | FDisplay::Grid | FDisplay::Inline | FDisplay::InlineBlock => {
+        FDisplay::Table
+        | FDisplay::TableRow
+        | FDisplay::TableCell
+        | FDisplay::TableHeaderGroup
+        | FDisplay::TableRowGroup
+        | FDisplay::TableFooterGroup
+        | FDisplay::Flex
+        | FDisplay::Grid
+        | FDisplay::Inline
+        | FDisplay::InlineBlock => {
             return;
         }
         _ => {}
@@ -100,7 +107,9 @@ fn layout_block_children(parent: &mut LayoutBox, ctx: &mut BlockFormattingContex
         // Skip zero-height whitespace text nodes — they don't participate in block flow
         // and would incorrectly reset pending_margin_bottom (CSS 2.1 §9.2.1.1)
         if child.rect.height < 0.5 && child.text_content.is_some() {
-            let is_ws = child.text_content.as_ref()
+            let is_ws = child
+                .text_content
+                .as_ref()
                 .map(|t| t.trim().is_empty())
                 .unwrap_or(false);
             if is_ws {
@@ -110,7 +119,8 @@ fn layout_block_children(parent: &mut LayoutBox, ctx: &mut BlockFormattingContex
 
         // Extract style values before mutating child (borrow checker)
         let margin_top = resolve_length_to_px(&child.style.margin[0], child_ctx.containing_width);
-        let margin_bottom = resolve_length_to_px(&child.style.margin[2], child_ctx.containing_width);
+        let margin_bottom =
+            resolve_length_to_px(&child.style.margin[2], child_ctx.containing_width);
         let is_relative = child.style.position == Position::Relative;
         let block_height = child.rect.height;
         let is_empty = is_empty_block(&child.style, block_height);
@@ -126,13 +136,19 @@ fn layout_block_children(parent: &mut LayoutBox, ctx: &mut BlockFormattingContex
 
         // Mettre à jour la position Y du LayoutBox
         let dy = block_y - child.rect.y;
-        if dy.abs() > 0.001 {
-            if std::env::var("FERROPDF_DEBUG").is_ok() {
-                let _tag = child.node_id.map(|_| "").unwrap_or("");
-                let text = child.text_content.as_deref().unwrap_or("").chars().take(20).collect::<String>();
-                eprintln!("[block_flow] MOVE dy={:.1} old_y={:.1} new_y={:.1} text=\"{}\"",
-                    dy, child.rect.y, block_y, text);
-            }
+        if dy.abs() > 0.001 && std::env::var("FERROPDF_DEBUG").is_ok() {
+            let _tag = child.node_id.map(|_| "").unwrap_or("");
+            let text = child
+                .text_content
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(20)
+                .collect::<String>();
+            eprintln!(
+                "[block_flow] MOVE dy={:.1} old_y={:.1} new_y={:.1} text=\"{}\"",
+                dy, child.rect.y, block_y, text
+            );
         }
         child.rect.y = block_y;
         child.content.y += dy;
@@ -215,10 +231,10 @@ fn apply_relative_position(
 ) {
     let style = &layout_box.style;
 
-    let offset_left  = resolve_length_to_px(&style.left,  containing_width);
+    let offset_left = resolve_length_to_px(&style.left, containing_width);
     let offset_right = resolve_length_to_px(&style.right, containing_width);
-    let offset_top   = resolve_length_to_px(&style.top,   containing_height);
-    let offset_bottom= resolve_length_to_px(&style.bottom, containing_height);
+    let offset_top = resolve_length_to_px(&style.top, containing_height);
+    let offset_bottom = resolve_length_to_px(&style.bottom, containing_height);
 
     // Si left et right sont tous deux spécifiés, left l'emporte (LTR)
     let dx = if style.left != Length::Auto {
@@ -251,24 +267,26 @@ fn is_empty_block(style: &ComputedStyle, height: f32) -> bool {
     if height != 0.0 {
         return false;
     }
-    let padding_top    = resolve_length_to_px(&style.padding[0], 0.0);
+    let padding_top = resolve_length_to_px(&style.padding[0], 0.0);
     let padding_bottom = resolve_length_to_px(&style.padding[2], 0.0);
 
-    padding_top == 0.0 && padding_bottom == 0.0
-        && style.border_top.width == 0.0 && style.border_bottom.width == 0.0
+    padding_top == 0.0
+        && padding_bottom == 0.0
+        && style.border_top.width == 0.0
+        && style.border_bottom.width == 0.0
 }
 
 /// Convertit une valeur Length CSS en pixels absolus.
 fn resolve_length_to_px(length: &Length, containing_width: f32) -> f32 {
     match length {
-        Length::Pt(v)       => *v,
-        Length::Px(px)      => *px,
-        Length::Percent(p)  => containing_width * p / 100.0,
-        Length::Em(em)      => em * 16.0,
-        Length::Rem(rem)    => rem * 16.0,
-        Length::Auto        => 0.0,
-        Length::Zero        => 0.0,
-        _                   => 0.0,
+        Length::Pt(v) => *v,
+        Length::Px(px) => *px,
+        Length::Percent(p) => containing_width * p / 100.0,
+        Length::Em(em) => em * 16.0,
+        Length::Rem(rem) => rem * 16.0,
+        Length::Auto => 0.0,
+        Length::Zero => 0.0,
+        _ => 0.0,
     }
 }
 

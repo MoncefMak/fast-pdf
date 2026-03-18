@@ -25,8 +25,8 @@
 //     y_on_page = y_absolute - page_y_offset
 // =============================================================================
 
-use ferropdf_core::{LayoutBox, PageConfig, PageBreak, PageBreakInside, Rect, Insets};
 use ferropdf_core::layout::Page;
+use ferropdf_core::{Insets, LayoutBox, PageBreak, PageBreakInside, PageConfig, Rect};
 
 // =============================================================================
 // STRUCTURES DE DONNÉES
@@ -59,6 +59,7 @@ impl PaginationContext {
     }
 
     /// Espace restant sur la page courante.
+    #[allow(dead_code)]
     fn remaining_height(&self) -> f32 {
         (self.page_height - self.used_height).max(0.0)
     }
@@ -147,19 +148,17 @@ fn fragment_box(layout_box: &LayoutBox, ctx: &mut PaginationContext) {
     // ─── Règle 2 : page-break-inside: avoid ─────────────────────────────────
     let avoid_break_inside = style.page_break_inside == PageBreakInside::Avoid;
 
-    if !fits_on_current_page && avoid_break_inside {
-        if fits_on_new_page {
-            if !ctx.is_current_page_empty() {
-                ctx.flush_page(layout_box.rect.y);
-            }
-            place_box_on_current_page(layout_box, ctx);
-            if should_break_after(style) {
-                ctx.flush_page(layout_box.rect.y + layout_box.rect.height);
-            }
-            return;
+    if !fits_on_current_page && avoid_break_inside && fits_on_new_page {
+        if !ctx.is_current_page_empty() {
+            ctx.flush_page(layout_box.rect.y);
         }
-        // Le bloc est plus grand qu'une page → on ne peut pas éviter la coupure.
+        place_box_on_current_page(layout_box, ctx);
+        if should_break_after(style) {
+            ctx.flush_page(layout_box.rect.y + layout_box.rect.height);
+        }
+        return;
     }
+    // Le bloc est plus grand qu'une page → on ne peut pas éviter la coupure.
 
     // ─── Règle 3 : Le bloc tient sur la page courante ───────────────────────
     if fits_on_current_page {
@@ -225,7 +224,13 @@ fn fragment_container(layout_box: &LayoutBox, ctx: &mut PaginationContext) {
             // Child is a large container that doesn't fit on any single page
             // Flush current wrapper first, then recurse into this child
             if !current_page_children.is_empty() {
-                let wrapper = make_container_fragment(layout_box, &current_page_children, ctx, is_first_page, false);
+                let wrapper = make_container_fragment(
+                    layout_box,
+                    &current_page_children,
+                    ctx,
+                    is_first_page,
+                    false,
+                );
                 ctx.current_page_boxes.push(wrapper);
                 current_page_children.clear();
             }
@@ -236,7 +241,13 @@ fn fragment_container(layout_box: &LayoutBox, ctx: &mut PaginationContext) {
             // Child doesn't fit — flush current page and start new
             if !current_page_children.is_empty() || !ctx.is_current_page_empty() {
                 if !current_page_children.is_empty() {
-                    let wrapper = make_container_fragment(layout_box, &current_page_children, ctx, is_first_page, false);
+                    let wrapper = make_container_fragment(
+                        layout_box,
+                        &current_page_children,
+                        ctx,
+                        is_first_page,
+                        false,
+                    );
                     ctx.current_page_boxes.push(wrapper);
                     current_page_children.clear();
                 }
@@ -255,7 +266,8 @@ fn fragment_container(layout_box: &LayoutBox, ctx: &mut PaginationContext) {
 
     // Flush remaining children as a wrapper on the current page
     if !current_page_children.is_empty() {
-        let wrapper = make_container_fragment(layout_box, &current_page_children, ctx, is_first_page, true);
+        let wrapper =
+            make_container_fragment(layout_box, &current_page_children, ctx, is_first_page, true);
         ctx.current_page_boxes.push(wrapper);
     }
 }
@@ -271,12 +283,21 @@ fn make_container_fragment(
 ) -> LayoutBox {
     // Compute bounding box of children on this page
     let min_y = children.iter().map(|c| c.rect.y).fold(f32::MAX, f32::min);
-    let max_bottom = children.iter()
+    let max_bottom = children
+        .iter()
         .map(|c| c.rect.y + c.rect.height)
         .fold(0.0f32, f32::max);
     let fragment_height = max_bottom - min_y
-        + if is_first_fragment { parent.padding.top + parent.border.top } else { 0.0 }
-        + if is_last_fragment { parent.padding.bottom + parent.border.bottom } else { 0.0 };
+        + if is_first_fragment {
+            parent.padding.top + parent.border.top
+        } else {
+            0.0
+        }
+        + if is_last_fragment {
+            parent.padding.bottom + parent.border.bottom
+        } else {
+            0.0
+        };
 
     let page_rel_y = (parent.rect.y - ctx.page_y_offset).max(0.0);
     let y = if is_first_fragment { page_rel_y } else { 0.0 };
@@ -284,7 +305,11 @@ fn make_container_fragment(
     let rect = Rect::new(parent.rect.x, y, parent.rect.width, fragment_height);
     let content = Rect::new(
         parent.content.x,
-        y + if is_first_fragment { parent.padding.top + parent.border.top } else { 0.0 },
+        y + if is_first_fragment {
+            parent.padding.top + parent.border.top
+        } else {
+            0.0
+        },
         parent.content.width,
         (fragment_height - parent.padding.vertical() - parent.border.vertical()).max(0.0),
     );
@@ -294,11 +319,21 @@ fn make_container_fragment(
         style: parent.style.clone(),
         rect,
         content,
-        padding: if is_first_fragment { parent.padding } else {
-            Insets { top: 0.0, ..parent.padding }
+        padding: if is_first_fragment {
+            parent.padding
+        } else {
+            Insets {
+                top: 0.0,
+                ..parent.padding
+            }
         },
-        border: if is_first_fragment { parent.border } else {
-            Insets { top: 0.0, ..parent.border }
+        border: if is_first_fragment {
+            parent.border
+        } else {
+            Insets {
+                top: 0.0,
+                ..parent.border
+            }
         },
         margin: Insets::zero(),
         children: children.to_vec(),
@@ -515,14 +550,21 @@ fn adjust_for_orphans(units: &[BreakUnit], break_idx: usize, min_orphans: u32) -
     }
 
     // Regarder l'unité juste avant le break
-    if let BreakUnit::TextLine { parent_node: Some(parent), .. } = &units[break_idx - 1] {
+    if let BreakUnit::TextLine {
+        parent_node: Some(parent),
+        ..
+    } = &units[break_idx - 1]
+    {
         // Compter combien de lignes de ce paragraphe sont juste avant l'index
         let mut orphan_count = 0u32;
         let mut i = break_idx;
         while i > 0 {
             i -= 1;
             match &units[i] {
-                BreakUnit::TextLine { parent_node: Some(p), .. } if p == parent => {
+                BreakUnit::TextLine {
+                    parent_node: Some(p),
+                    ..
+                } if p == parent => {
                     orphan_count += 1;
                 }
                 _ => break,
@@ -546,12 +588,19 @@ fn adjust_for_widows(units: &[BreakUnit], break_idx: usize, min_widows: u32) -> 
     }
 
     // Regarder l'unité au point de coupure (première de la page suivante)
-    if let BreakUnit::TextLine { parent_node: Some(parent), .. } = &units[break_idx] {
+    if let BreakUnit::TextLine {
+        parent_node: Some(parent),
+        ..
+    } = &units[break_idx]
+    {
         // Compter combien de lignes de ce paragraphe seront au début de la page suivante
         let mut widow_count = 0u32;
         for unit in &units[break_idx..] {
             match unit {
-                BreakUnit::TextLine { parent_node: Some(p), .. } if p == parent => {
+                BreakUnit::TextLine {
+                    parent_node: Some(p),
+                    ..
+                } if p == parent => {
                     widow_count += 1;
                 }
                 _ => break,

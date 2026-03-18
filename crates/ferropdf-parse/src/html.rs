@@ -1,14 +1,12 @@
+use crate::ParseResult;
+use ferropdf_core::{Document, NodeId};
+use html5ever::tendril::StrTendril;
+use html5ever::{parse_document, tendril::TendrilSink};
+use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
+use markup5ever::interface::{Attribute, ExpandedName, QualName};
+use markup5ever::{local_name, namespace_url, ns};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use html5ever::{
-    parse_document, tendril::TendrilSink,
-};
-use markup5ever::interface::tree_builder::{NodeOrText, TreeSink, ElementFlags, QuirksMode};
-use markup5ever::interface::{QualName, Attribute, ExpandedName};
-use markup5ever::{ns, namespace_url, local_name};
-use html5ever::tendril::StrTendril;
-use ferropdf_core::{Document, NodeId};
-use crate::ParseResult;
 
 pub fn parse_full(html: &str) -> ferropdf_core::Result<ParseResult> {
     let sink = DomSink::new();
@@ -26,10 +24,10 @@ pub fn parse_html(html: &str) -> ferropdf_core::Result<Document> {
 }
 
 struct DomSink {
-    doc:             Document,
+    doc: Document,
     external_sheets: Vec<String>,
-    qual_names:      HashMap<NodeId, QualName>,
-    default_qn:      QualName,
+    qual_names: HashMap<NodeId, QualName>,
+    default_qn: QualName,
 }
 
 impl DomSink {
@@ -39,7 +37,12 @@ impl DomSink {
         let default_qn = QualName::new(None, ns!(html), local_name!("div"));
         let mut qual_names = HashMap::new();
         qual_names.insert(root, default_qn.clone());
-        Self { doc, external_sheets: Vec::new(), qual_names, default_qn }
+        Self {
+            doc,
+            external_sheets: Vec::new(),
+            qual_names,
+            default_qn,
+        }
     }
 }
 
@@ -47,29 +50,40 @@ impl TreeSink for DomSink {
     type Handle = NodeId;
     type Output = Self;
 
-    fn finish(self) -> Self { self }
+    fn finish(self) -> Self {
+        self
+    }
 
     fn parse_error(&mut self, msg: Cow<'static, str>) {
         log::debug!("HTML parse warning: {}", msg);
     }
 
-    fn get_document(&mut self) -> Self::Handle { self.doc.root() }
-    fn get_template_contents(&mut self, t: &Self::Handle) -> Self::Handle { *t }
-    fn same_node(&self, x: &Self::Handle, y: &Self::Handle) -> bool { x == y }
+    fn get_document(&mut self) -> Self::Handle {
+        self.doc.root()
+    }
+    fn get_template_contents(&mut self, t: &Self::Handle) -> Self::Handle {
+        *t
+    }
+    fn same_node(&self, x: &Self::Handle, y: &Self::Handle) -> bool {
+        x == y
+    }
 
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> ExpandedName<'a> {
-        self.qual_names.get(target)
+        self.qual_names
+            .get(target)
             .unwrap_or(&self.default_qn)
             .expanded()
     }
 
     fn create_element(
-        &mut self, name: QualName,
+        &mut self,
+        name: QualName,
         attrs: Vec<Attribute>,
         _: ElementFlags,
     ) -> Self::Handle {
         let tag = name.local.as_ref().to_lowercase();
-        let attr_map: HashMap<String, String> = attrs.iter()
+        let attr_map: HashMap<String, String> = attrs
+            .iter()
             .map(|a| (a.name.local.to_string(), a.value.to_string()))
             .collect();
 
@@ -97,7 +111,7 @@ impl TreeSink for DomSink {
 
     fn append(&mut self, parent: &Self::Handle, child: NodeOrText<Self::Handle>) {
         match child {
-            NodeOrText::AppendNode(id)   => self.doc.append_child(*parent, id),
+            NodeOrText::AppendNode(id) => self.doc.append_child(*parent, id),
             NodeOrText::AppendText(text) => {
                 // html5ever splits text at character references (e.g. &#39; ' &amp;).
                 // Merge consecutive text nodes to keep "Jus d'orange" as one node.
@@ -117,10 +131,13 @@ impl TreeSink for DomSink {
     }
 
     fn append_based_on_parent_node(
-        &mut self, element: &Self::Handle,
+        &mut self,
+        element: &Self::Handle,
         _prev: &Self::Handle,
         child: NodeOrText<Self::Handle>,
-    ) { self.append(element, child); }
+    ) {
+        self.append(element, child);
+    }
 
     fn append_before_sibling(
         &mut self,
@@ -169,7 +186,8 @@ impl TreeSink for DomSink {
 
     fn add_attrs_if_missing(&mut self, target: &Self::Handle, attrs: Vec<Attribute>) {
         for attr in attrs {
-            self.doc.nodes[*target].attributes
+            self.doc.nodes[*target]
+                .attributes
                 .entry(attr.name.local.to_string())
                 .or_insert_with(|| attr.value.to_string());
         }
@@ -192,15 +210,19 @@ impl TreeSink for DomSink {
     fn mark_script_already_started(&mut self, _: &Self::Handle) {}
     fn pop(&mut self, _: &Self::Handle) {}
     fn set_quirks_mode(&mut self, _: QuirksMode) {}
-    fn is_mathml_annotation_xml_integration_point(&self, _: &Self::Handle) -> bool { false }
+    fn is_mathml_annotation_xml_integration_point(&self, _: &Self::Handle) -> bool {
+        false
+    }
     fn set_current_line(&mut self, _: u64) {}
 }
 
 fn extract_style_tags(doc: &Document) -> Vec<String> {
-    doc.nodes.iter()
+    doc.nodes
+        .iter()
         .filter(|(_, n)| n.tag_name.as_deref() == Some("style"))
         .map(|(_, n)| {
-            n.children.iter()
+            n.children
+                .iter()
                 .filter_map(|&c| doc.nodes[c].text.clone())
                 .collect::<String>()
         })

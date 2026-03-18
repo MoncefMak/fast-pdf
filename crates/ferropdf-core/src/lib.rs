@@ -1,23 +1,22 @@
 pub mod color;
+pub mod dom;
+pub mod error;
 pub mod geometry;
+pub mod layout;
 pub mod length;
 pub mod page;
-pub mod dom;
 pub mod style;
-pub mod layout;
-pub mod error;
 
 // Re-exports publics
 pub use color::Color;
-pub use geometry::{Rect, Point, Size, Insets};
-pub use length::Length;
-pub use page::{PageSize, PageConfig, PageMargins, Orientation};
 pub use dom::{Document, Node, NodeId, NodeType};
-pub use style::{
-    ComputedStyle, Display, Position, FontWeight, FontStyle,
-    TextAlign, FlexDirection, FlexWrap, JustifyContent,
-    AlignItems, AlignSelf, PageBreak, PageBreakInside, BorderSide, BorderStyle,
-    BorderRadius, BoxDecorationBreak,
-};
-pub use layout::{LayoutBox, LayoutTree, ShapedLine, ShapedGlyph, BreakUnit};
 pub use error::{FerroError, Result};
+pub use geometry::{Insets, Point, Rect, Size};
+pub use layout::{BreakUnit, LayoutBox, LayoutTree, ShapedGlyph, ShapedLine};
+pub use length::Length;
+pub use page::{Orientation, PageConfig, PageMargins, PageSize};
+pub use style::{
+    AlignItems, AlignSelf, BorderRadius, BorderSide, BorderStyle, BoxDecorationBreak,
+    ComputedStyle, Display, FlexDirection, FlexWrap, FontStyle, FontWeight, JustifyContent,
+    PageBreak, PageBreakInside, Position, TextAlign,
+};

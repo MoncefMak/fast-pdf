@@ -15,9 +15,7 @@ use selectors::context::{
     IgnoreNthChildForInvalidation, MatchingContext, MatchingMode, NeedsSelectorFlags, QuirksMode,
 };
 use selectors::matching::ElementSelectorFlags;
-use selectors::parser::{
-    NonTSPseudoClass, ParseRelative, PseudoElement, SelectorParseErrorKind,
-};
+use selectors::parser::{NonTSPseudoClass, ParseRelative, PseudoElement, SelectorParseErrorKind};
 use selectors::{NthIndexCache, OpaqueElement, SelectorList};
 
 use ferropdf_core::{Document, NodeId, NodeType};
@@ -36,19 +34,27 @@ impl ToCss for CssString {
 }
 
 impl<'a> From<&'a str> for CssString {
-    fn from(s: &'a str) -> Self { CssString(s.to_string()) }
+    fn from(s: &'a str) -> Self {
+        CssString(s.to_string())
+    }
 }
 
 impl AsRef<str> for CssString {
-    fn as_ref(&self) -> &str { &self.0 }
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
 }
 
 impl Borrow<str> for CssString {
-    fn borrow(&self) -> &str { &self.0 }
+    fn borrow(&self) -> &str {
+        &self.0
+    }
 }
 
 impl fmt::Display for CssString {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&self.0) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
 }
 
 // ─── SelectorImpl ────────────────────────────────────────────────────────────
@@ -204,7 +210,10 @@ impl<'a> DomNode<'a> {
     /// Get sibling elements (only Element nodes, skip Text/Comment).
     fn sibling_elements(&self) -> Vec<NodeId> {
         if let Some(pid) = self.node().parent {
-            self.doc.get(pid).children.iter()
+            self.doc
+                .get(pid)
+                .children
+                .iter()
                 .copied()
                 .filter(|&cid| self.doc.get(cid).node_type == NodeType::Element)
                 .collect()
@@ -235,9 +244,15 @@ impl<'a> selectors::Element for DomNode<'a> {
         }
     }
 
-    fn parent_node_is_shadow_root(&self) -> bool { false }
-    fn containing_shadow_host(&self) -> Option<Self> { None }
-    fn is_pseudo_element(&self) -> bool { false }
+    fn parent_node_is_shadow_root(&self) -> bool {
+        false
+    }
+    fn containing_shadow_host(&self) -> Option<Self> {
+        None
+    }
+    fn is_pseudo_element(&self) -> bool {
+        false
+    }
 
     fn prev_sibling_element(&self) -> Option<Self> {
         let siblings = self.sibling_elements();
@@ -256,13 +271,17 @@ impl<'a> selectors::Element for DomNode<'a> {
     }
 
     fn first_element_child(&self) -> Option<Self> {
-        self.node().children.iter()
+        self.node()
+            .children
+            .iter()
             .copied()
             .find(|&cid| self.doc.get(cid).node_type == NodeType::Element)
             .map(|id| DomNode::new(self.doc, id))
     }
 
-    fn is_html_element_in_html_document(&self) -> bool { true }
+    fn is_html_element_in_html_document(&self) -> bool {
+        true
+    }
 
     fn has_local_name(&self, local_name: &str) -> bool {
         self.node().tag_name.as_deref() == Some(local_name)
@@ -292,7 +311,11 @@ impl<'a> selectors::Element for DomNode<'a> {
             // Convert to &str-based operation for eval
             match operation {
                 AttrSelectorOperation::Exists => true,
-                AttrSelectorOperation::WithValue { operator, case_sensitivity, value } => {
+                AttrSelectorOperation::WithValue {
+                    operator,
+                    case_sensitivity,
+                    value,
+                } => {
                     let str_op = AttrSelectorOperation::WithValue {
                         operator: *operator,
                         case_sensitivity: *case_sensitivity,
@@ -332,11 +355,12 @@ impl<'a> selectors::Element for DomNode<'a> {
     }
 
     fn is_link(&self) -> bool {
-        self.node().tag_name.as_deref() == Some("a")
-            && self.node().attributes.contains_key("href")
+        self.node().tag_name.as_deref() == Some("a") && self.node().attributes.contains_key("href")
     }
 
-    fn is_html_slot_element(&self) -> bool { false }
+    fn is_html_slot_element(&self) -> bool {
+        false
+    }
 
     fn has_id(&self, id: &CssString, case_sensitivity: CaseSensitivity) -> bool {
         if let Some(elem_id) = self.node().attr("id") {
@@ -351,24 +375,30 @@ impl<'a> selectors::Element for DomNode<'a> {
 
     fn has_class(&self, name: &CssString, case_sensitivity: CaseSensitivity) -> bool {
         if let Some(class_attr) = self.node().attr("class") {
-            class_attr.split_whitespace().any(|c| match case_sensitivity {
-                CaseSensitivity::CaseSensitive => c == name.0.as_str(),
-                CaseSensitivity::AsciiCaseInsensitive => c.eq_ignore_ascii_case(&name.0),
-            })
+            class_attr
+                .split_whitespace()
+                .any(|c| match case_sensitivity {
+                    CaseSensitivity::CaseSensitive => c == name.0.as_str(),
+                    CaseSensitivity::AsciiCaseInsensitive => c.eq_ignore_ascii_case(&name.0),
+                })
         } else {
             false
         }
     }
 
-    fn imported_part(&self, _name: &CssString) -> Option<CssString> { None }
-    fn is_part(&self, _name: &CssString) -> bool { false }
+    fn imported_part(&self, _name: &CssString) -> Option<CssString> {
+        None
+    }
+    fn is_part(&self, _name: &CssString) -> bool {
+        false
+    }
 
     fn is_empty(&self) -> bool {
         self.node().children.iter().all(|&cid| {
             let child = self.doc.get(cid);
             match child.node_type {
                 NodeType::Element => false,
-                NodeType::Text => child.text.as_deref().map_or(true, |t| t.trim().is_empty()),
+                NodeType::Text => child.text.as_deref().is_none_or(|t| t.trim().is_empty()),
                 _ => true,
             }
         })
@@ -427,11 +457,7 @@ pub fn parse_rules(sheets: &[Stylesheet], ua_sheet_count: usize) -> Vec<MatchedR
             let mut input = cssparser::ParserInput::new(&selector_text);
             let mut parser = cssparser::Parser::new(&mut input);
 
-            let parsed = SelectorList::parse(
-                &FerroSelectorParser,
-                &mut parser,
-                ParseRelative::No,
-            );
+            let parsed = SelectorList::parse(&FerroSelectorParser, &mut parser, ParseRelative::No);
 
             if let Ok(selector_list) = parsed {
                 rules.push(MatchedRule {
@@ -453,8 +479,8 @@ pub fn parse_rules(sheets: &[Stylesheet], ua_sheet_count: usize) -> Vec<MatchedR
 /// Match all rules against a node and return declarations scored with specificity.
 /// The `selectors` crate handles ALL matching logic: combinators, pseudo-classes,
 /// attribute selectors, :nth-child, etc.
-pub fn match_node<'a>(
-    doc: &'a Document,
+pub fn match_node(
+    doc: &Document,
     node_id: NodeId,
     rules: &[MatchedRule],
 ) -> Vec<ScoredDeclaration> {
@@ -478,13 +504,7 @@ pub fn match_node<'a>(
                 IgnoreNthChildForInvalidation::No,
             );
 
-            if selectors::matching::matches_selector(
-                selector,
-                0,
-                None,
-                &element,
-                &mut context,
-            ) {
+            if selectors::matching::matches_selector(selector, 0, None, &element, &mut context) {
                 // Use the specificity computed by the selectors crate
                 let specificity = selector.specificity();
                 for decl in &rule.declarations {

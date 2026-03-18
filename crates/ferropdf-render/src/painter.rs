@@ -1,6 +1,6 @@
-use ferropdf_core::{LayoutBox, PageConfig, Color, Rect, BorderStyle};
-use ferropdf_core::layout::Page;
 use crate::display_list::{DrawOp, PageDisplayList};
+use ferropdf_core::layout::Page;
+use ferropdf_core::{BorderStyle, LayoutBox, PageConfig, Rect};
 
 /// Paint a page into a display list.
 /// All coordinates are in points typographiques (pt).
@@ -23,7 +23,13 @@ pub fn paint_page(page: &Page, config: &PageConfig) -> PageDisplayList {
     }
 }
 
-fn paint_box(layout_box: &LayoutBox, ops: &mut Vec<DrawOp>, offset_x: f32, offset_y: f32, parent_content_width: f32) {
+fn paint_box(
+    layout_box: &LayoutBox,
+    ops: &mut Vec<DrawOp>,
+    offset_x: f32,
+    offset_y: f32,
+    parent_content_width: f32,
+) {
     let style = &layout_box.style;
 
     if !style.visibility {

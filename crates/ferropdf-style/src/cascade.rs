@@ -3,9 +3,9 @@
 //! Specificity comes from `selectors::Selector::specificity()` — we never
 //! compute it by hand.
 
-use ferropdf_core::*;
-use ferropdf_parse::{Declaration, CssProperty, CssValue};
 use crate::matching::ScoredDeclaration;
+use ferropdf_core::*;
+use ferropdf_parse::{CssProperty, CssValue, Declaration};
 
 /// Apply declarations sorted by cascade order:
 /// 1. Non-important, sorted by (specificity, source_order)
@@ -14,14 +14,16 @@ use crate::matching::ScoredDeclaration;
 /// Within each group, higher specificity wins; equal specificity → later source order wins.
 pub fn apply_scored_declarations(
     style: &mut ComputedStyle,
-    scored: &mut Vec<ScoredDeclaration>,
+    scored: &mut [ScoredDeclaration],
     root_font_size: f32,
 ) {
     // Partition into non-important and important
-    let mut non_important: Vec<&ScoredDeclaration> = scored.iter()
+    let mut non_important: Vec<&ScoredDeclaration> = scored
+        .iter()
         .filter(|sd| !sd.declaration.important)
         .collect();
-    let mut important: Vec<&ScoredDeclaration> = scored.iter()
+    let mut important: Vec<&ScoredDeclaration> = scored
+        .iter()
         .filter(|sd| sd.declaration.important)
         .collect();
 
@@ -33,10 +35,20 @@ pub fn apply_scored_declarations(
 
     // Apply in order: non-important first, then important overrides
     for sd in &non_important {
-        apply_single(style, &sd.declaration.property, &sd.declaration.value, root_font_size);
+        apply_single(
+            style,
+            &sd.declaration.property,
+            &sd.declaration.value,
+            root_font_size,
+        );
     }
     for sd in &important {
-        apply_single(style, &sd.declaration.property, &sd.declaration.value, root_font_size);
+        apply_single(
+            style,
+            &sd.declaration.property,
+            &sd.declaration.value,
+            root_font_size,
+        );
     }
 }
 
@@ -186,17 +198,24 @@ fn apply_single(
         }
 
         CssProperty::Color => {
-            if let Some(c) = parse_color(raw) { style.color = c; }
+            if let Some(c) = parse_color(raw) {
+                style.color = c;
+            }
         }
         CssProperty::BackgroundColor | CssProperty::Background => {
-            if let Some(c) = parse_color(raw) { style.background_color = c; }
+            if let Some(c) = parse_color(raw) {
+                style.background_color = c;
+            }
         }
         CssProperty::Opacity => {
-            if let Ok(v) = raw.parse::<f32>() { style.opacity = v.clamp(0.0, 1.0); }
+            if let Ok(v) = raw.parse::<f32>() {
+                style.opacity = v.clamp(0.0, 1.0);
+            }
         }
 
         CssProperty::FontFamily => {
-            style.font_family = raw.split(',')
+            style.font_family = raw
+                .split(',')
                 .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
                 .collect();
         }
@@ -312,10 +331,14 @@ fn apply_single(
             }
         }
         CssProperty::FlexGrow => {
-            if let Ok(v) = raw.parse::<f32>() { style.flex_grow = v; }
+            if let Ok(v) = raw.parse::<f32>() {
+                style.flex_grow = v;
+            }
         }
         CssProperty::FlexShrink => {
-            if let Ok(v) = raw.parse::<f32>() { style.flex_shrink = v; }
+            if let Ok(v) = raw.parse::<f32>() {
+                style.flex_shrink = v;
+            }
         }
         CssProperty::FlexBasis => style.flex_basis = parse_length(raw),
         CssProperty::Gap => {
@@ -329,20 +352,20 @@ fn apply_single(
         CssProperty::PageBreakBefore => {
             style.page_break_before = match raw {
                 "always" => PageBreak::Always,
-                "page"   => PageBreak::Page,
-                "left"   => PageBreak::Left,
-                "right"  => PageBreak::Right,
-                "avoid"  => PageBreak::Avoid,
+                "page" => PageBreak::Page,
+                "left" => PageBreak::Left,
+                "right" => PageBreak::Right,
+                "avoid" => PageBreak::Avoid,
                 _ => PageBreak::Auto,
             };
         }
         CssProperty::PageBreakAfter => {
             style.page_break_after = match raw {
                 "always" => PageBreak::Always,
-                "page"   => PageBreak::Page,
-                "left"   => PageBreak::Left,
-                "right"  => PageBreak::Right,
-                "avoid"  => PageBreak::Avoid,
+                "page" => PageBreak::Page,
+                "left" => PageBreak::Left,
+                "right" => PageBreak::Right,
+                "avoid" => PageBreak::Avoid,
                 _ => PageBreak::Auto,
             };
         }
@@ -353,10 +376,14 @@ fn apply_single(
             };
         }
         CssProperty::Orphans => {
-            if let Ok(v) = raw.parse::<u32>() { style.orphans = v; }
+            if let Ok(v) = raw.parse::<u32>() {
+                style.orphans = v;
+            }
         }
         CssProperty::Widows => {
-            if let Ok(v) = raw.parse::<u32>() { style.widows = v; }
+            if let Ok(v) = raw.parse::<u32>() {
+                style.widows = v;
+            }
         }
         CssProperty::Unknown(ref name) if name == "box-decoration-break" => {
             style.box_decoration_break = match raw {
@@ -374,12 +401,18 @@ fn apply_single(
 
 fn parse_length(s: &str) -> Length {
     let s = s.trim();
-    if s == "auto" { return Length::Auto; }
-    if s == "0" || s == "0px" { return Length::Zero; }
-    if s == "none" { return Length::None; }
+    if s == "auto" {
+        return Length::Auto;
+    }
+    if s == "0" || s == "0px" {
+        return Length::Zero;
+    }
+    if s == "none" {
+        return Length::None;
+    }
 
-    if s.ends_with('%') {
-        if let Ok(v) = s[..s.len()-1].trim().parse::<f32>() {
+    if let Some(v) = s.strip_suffix('%') {
+        if let Ok(v) = v.trim().parse::<f32>() {
             return Length::Percent(v);
         }
     }
@@ -391,8 +424,8 @@ fn parse_length(s: &str) -> Length {
         ("em", Length::Em),
         ("rem", Length::Rem),
     ] {
-        if s.ends_with(suffix) {
-            if let Ok(v) = s[..s.len()-suffix.len()].trim().parse::<f32>() {
+        if let Some(v) = s.strip_suffix(suffix) {
+            if let Ok(v) = v.trim().parse::<f32>() {
                 return ctor(v);
             }
         }
@@ -414,16 +447,18 @@ fn parse_shorthand_lengths(s: &str) -> Vec<Length> {
 /// Used for properties stored as f32 (border widths, border-radius, etc.)
 fn parse_length_to_pt(s: &str) -> Option<f32> {
     let s = s.trim();
-    if s == "0" || s == "0px" { return Some(0.0); }
+    if s == "0" || s == "0px" {
+        return Some(0.0);
+    }
 
-    if s.ends_with("px") {
-        return s[..s.len()-2].trim().parse::<f32>().ok().map(|v| v * 0.75);
+    if let Some(v) = s.strip_suffix("px") {
+        return v.trim().parse::<f32>().ok().map(|v| v * 0.75);
     }
-    if s.ends_with("pt") {
-        return s[..s.len()-2].trim().parse::<f32>().ok();
+    if let Some(v) = s.strip_suffix("pt") {
+        return v.trim().parse::<f32>().ok();
     }
-    if s.ends_with("mm") {
-        return s[..s.len()-2].trim().parse::<f32>().ok().map(|v| v * 2.834_646);
+    if let Some(v) = s.strip_suffix("mm") {
+        return v.trim().parse::<f32>().ok().map(|v| v * 2.834_646);
     }
 
     // Bare number → treated as px
@@ -450,17 +485,23 @@ fn parse_color(s: &str) -> Option<Color> {
 }
 
 fn parse_rgb_function(s: &str) -> Option<Color> {
-    let inner = s.trim_start_matches("rgba(")
+    let inner = s
+        .trim_start_matches("rgba(")
         .trim_start_matches("rgb(")
         .trim_end_matches(')');
-    let parts: Vec<&str> = inner.split(|c| c == ',' || c == ' ').filter(|s| !s.is_empty()).collect();
+    let parts: Vec<&str> = inner.split([',', ' ']).filter(|s| !s.is_empty()).collect();
     if parts.len() >= 3 {
         let r = parts[0].trim().parse::<u8>().ok()?;
         let g = parts[1].trim().parse::<u8>().ok()?;
         let b = parts[2].trim().parse::<u8>().ok()?;
         if parts.len() >= 4 {
             let a = parts[3].trim().parse::<f32>().ok().unwrap_or(1.0);
-            Some(Color::new(r as f32/255.0, g as f32/255.0, b as f32/255.0, a))
+            Some(Color::new(
+                r as f32 / 255.0,
+                g as f32 / 255.0,
+                b as f32 / 255.0,
+                a,
+            ))
         } else {
             Some(Color::from_rgb8(r, g, b))
         }
@@ -504,51 +545,51 @@ fn resolve_font_size(raw: &str, parent_size: f32, root_font_size: f32) -> f32 {
 
     // Font-size keywords (values in pt: 16px default = 12pt)
     match raw {
-        "xx-small" => return 6.75,   // 9px × 0.75
-        "x-small" => return 7.5,     // 10px × 0.75
-        "small" => return 9.75,      // 13px × 0.75
-        "medium" => return 12.0,     // 16px × 0.75
-        "large" => return 13.5,      // 18px × 0.75
-        "x-large" => return 18.0,    // 24px × 0.75
-        "xx-large" => return 24.0,   // 32px × 0.75
+        "xx-small" => return 6.75, // 9px × 0.75
+        "x-small" => return 7.5,   // 10px × 0.75
+        "small" => return 9.75,    // 13px × 0.75
+        "medium" => return 12.0,   // 16px × 0.75
+        "large" => return 13.5,    // 18px × 0.75
+        "x-large" => return 18.0,  // 24px × 0.75
+        "xx-large" => return 24.0, // 32px × 0.75
         "smaller" => return parent_size * 0.833,
         "larger" => return parent_size * 1.2,
         _ => {}
     }
 
-    if raw.ends_with("em") {
-        if let Ok(v) = raw[..raw.len()-2].trim().parse::<f32>() {
+    if let Some(v) = raw.strip_suffix("em") {
+        if let Ok(v) = v.trim().parse::<f32>() {
             return v * parent_size;
         }
     }
-    if raw.ends_with("rem") {
-        if let Ok(v) = raw[..raw.len()-3].trim().parse::<f32>() {
+    if let Some(v) = raw.strip_suffix("rem") {
+        if let Ok(v) = v.trim().parse::<f32>() {
             return v * root_font_size;
         }
     }
-    if raw.ends_with('%') {
-        if let Ok(v) = raw[..raw.len()-1].trim().parse::<f32>() {
+    if let Some(v) = raw.strip_suffix('%') {
+        if let Ok(v) = v.trim().parse::<f32>() {
             return v / 100.0 * parent_size;
         }
     }
-    if raw.ends_with("px") {
-        if let Ok(v) = raw[..raw.len()-2].trim().parse::<f32>() {
-            return v * 0.75;  // 1px = 72/96 pt
+    if let Some(v) = raw.strip_suffix("px") {
+        if let Ok(v) = v.trim().parse::<f32>() {
+            return v * 0.75; // 1px = 72/96 pt
         }
     }
-    if raw.ends_with("pt") {
-        if let Ok(v) = raw[..raw.len()-2].trim().parse::<f32>() {
-            return v;  // pt is the internal unit
+    if let Some(v) = raw.strip_suffix("pt") {
+        if let Ok(v) = v.trim().parse::<f32>() {
+            return v; // pt is the internal unit
         }
     }
-    if raw.ends_with("mm") {
-        if let Ok(v) = raw[..raw.len()-2].trim().parse::<f32>() {
+    if let Some(v) = raw.strip_suffix("mm") {
+        if let Ok(v) = v.trim().parse::<f32>() {
             return v * 2.834_646;
         }
     }
 
     if let Ok(v) = raw.parse::<f32>() {
-        return v * 0.75;  // bare numbers treated as px
+        return v * 0.75; // bare numbers treated as px
     }
 
     parent_size

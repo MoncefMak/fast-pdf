@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773859124076,
+  "lastUpdate": 1773860394562,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -775,6 +775,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 879436,
             "range": "± 11427",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "7864677a6a33ea3baf8f21e83eb1873d1bb4635d",
+          "message": "fix(ci): resolve all clippy errors, fmt violations, and PyO3 deprecations\n\n- Run cargo fmt across entire workspace\n- Fix clippy::needless_range_loop in pdf.rs glyph width loop\n- Fix clippy::manual_strip with strip_suffix() in page.rs, parser.rs, cascade.rs\n- Fix clippy::derivable_impls for Length and FontWeight defaults\n- Fix clippy::field_reassign_with_default in inherit.rs\n- Add clippy allows for too_many_arguments, large_enum_variant, dead_code\n- Remove 5 dead duplicate functions from taffy_bridge.rs\n- Replace deprecated py.get_type() with py.get_type_bound() (PyO3 0.21)\n- Pin Python interpreters to 3.8-3.12 in release.yml (PyO3 0.21 max)\n- Use Python 3.12 in CI test matrix (not 3.13)",
+          "timestamp": "2026-03-18T19:57:59+01:00",
+          "tree_id": "18935f7a072edd0310c99acc419db79ee38d686b",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/7864677a6a33ea3baf8f21e83eb1873d1bb4635d"
+        },
+        "date": 1773860394257,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 3834864,
+            "range": "± 192897",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 4510419,
+            "range": "± 21681",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 225363,
+            "range": "± 1974",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 872194,
+            "range": "± 6269",
             "unit": "ns/iter"
           }
         ]

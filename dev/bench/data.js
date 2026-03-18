@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773860394562,
+  "lastUpdate": 1773872826909,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -823,6 +823,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 872194,
             "range": "± 6269",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "7a63a27a8098da2ba3004455415346c88696f526",
+          "message": "security: upgrade PyO3 0.21 → 0.24 (RUSTSEC-2025-0020)\n\n- Fix buffer overflow vulnerability in PyString::from_object\n- Replace deprecated get_type_bound() → get_type(), new_bound() → new()\n- Re-enable Python 3.13 in CI and release builds (now supported)",
+          "timestamp": "2026-03-18T23:25:06+01:00",
+          "tree_id": "3f29e0937655fc7f3bbc050dda40e0ebfa6614ae",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/7a63a27a8098da2ba3004455415346c88696f526"
+        },
+        "date": 1773872826001,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 3796106,
+            "range": "± 28800",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 4475529,
+            "range": "± 54674",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 222127,
+            "range": "± 1312",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 867720,
+            "range": "± 16524",
             "unit": "ns/iter"
           }
         ]

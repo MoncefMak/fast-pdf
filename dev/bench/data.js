@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773858891319,
+  "lastUpdate": 1773859124076,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -727,6 +727,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 872917,
             "range": "± 7437",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "176e50f95936ee1aed5f8a221e31a1a3db9b1a50",
+          "message": "ci: auto-deploy on version change in pyproject.toml\n\n- Trigger release workflow on push to main when pyproject.toml changes\n- version-gate job compares pyproject.toml version to existing git tags\n- Auto-creates and pushes vX.Y.Z tag if version is new\n- All build jobs gated behind version-gate\n- workflow_dispatch still available for manual releases",
+          "timestamp": "2026-03-18T19:36:35+01:00",
+          "tree_id": "846961d890be2f2d049fabec60fd70eacdf58380",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/176e50f95936ee1aed5f8a221e31a1a3db9b1a50"
+        },
+        "date": 1773859123490,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 3972328,
+            "range": "± 70112",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 4686320,
+            "range": "± 67182",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 228337,
+            "range": "± 11511",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 879436,
+            "range": "± 11427",
             "unit": "ns/iter"
           }
         ]

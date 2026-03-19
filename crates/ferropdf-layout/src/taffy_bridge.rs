@@ -253,10 +253,7 @@ fn build_table_as_grid(
                         end: taffy::GridPlacement::Span(cell.colspan as u16),
                     };
                     taffy.set_style(tid, cell_style).map_err(|e| {
-                        ferropdf_core::FerroError::Layout(format!(
-                            "Taffy set style error: {:?}",
-                            e
-                        ))
+                        ferropdf_core::FerroError::Layout(format!("Taffy set style error: {:?}", e))
                     })?;
                 }
                 cell_taffy_ids.push(tid);

@@ -89,11 +89,17 @@ pub fn compute_table_layout(
         font_system,
     );
 
-    log::debug!("[TABLE] rows={} cols={} table_width={:.1}", cell_rows.len(), num_cols, table_width);
+    log::debug!(
+        "[TABLE] rows={} cols={} table_width={:.1}",
+        cell_rows.len(),
+        num_cols,
+        table_width
+    );
     log::debug!("[TABLE] column_widths={:?}", column_widths);
 
     // Phase 2: compute row heights (colspan-aware)
-    let row_heights = compute_row_heights_with_colspan(&cell_rows, &column_widths, doc, styles, font_system);
+    let row_heights =
+        compute_row_heights_with_colspan(&cell_rows, &column_widths, doc, styles, font_system);
 
     let total_width: f32 = column_widths.iter().sum();
     let total_height: f32 = row_heights.iter().sum();

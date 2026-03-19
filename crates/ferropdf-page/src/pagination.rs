@@ -346,10 +346,7 @@ fn fragment_table(table_box: &LayoutBox, ctx: &mut PaginationContext) {
 
     let thead_height: f32 = if !thead_rows.is_empty() {
         let thead_top = thead_rows.iter().map(|r| r.top).fold(f32::MAX, f32::min);
-        let thead_bottom = thead_rows
-            .iter()
-            .map(|r| r.bottom)
-            .fold(0.0f32, f32::max);
+        let thead_bottom = thead_rows.iter().map(|r| r.bottom).fold(0.0f32, f32::max);
         thead_bottom - thead_top
     } else {
         0.0
@@ -370,8 +367,8 @@ fn fragment_table(table_box: &LayoutBox, ctx: &mut PaginationContext) {
     }
 
     for body_row in &body_rows {
-        let row_bottom_on_page = (body_row.bottom - ctx.page_y_offset)
-            + if !is_first_page { thead_height } else { 0.0 };
+        let row_bottom_on_page =
+            (body_row.bottom - ctx.page_y_offset) + if !is_first_page { thead_height } else { 0.0 };
         let row_fits = row_bottom_on_page <= ctx.page_height;
 
         if row_fits {

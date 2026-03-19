@@ -443,14 +443,7 @@ pub fn write_pdf(
                         let pr = to_pdf_rect(rect.x, rect.y, rect.width, rect.height, page_h);
                         // Position image: scale to target size and translate
                         content.save_state();
-                        content.transform([
-                            pr.width,
-                            0.0,
-                            0.0,
-                            pr.height,
-                            pr.x,
-                            pr.y,
-                        ]);
+                        content.transform([pr.width, 0.0, 0.0, pr.height, pr.x, pr.y]);
                         content.x_object(Name(img.pdf_name.as_bytes()));
                         content.restore_state();
                     }
@@ -477,12 +470,12 @@ pub fn write_pdf(
     for img in image_map.values() {
         // Deflate-compress the raw RGB data
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
-        encoder.write_all(&img.rgb_data).map_err(|e| {
-            FerroError::Image(format!("Image compression error: {e}"))
-        })?;
-        let compressed = encoder.finish().map_err(|e| {
-            FerroError::Image(format!("Image compression finish error: {e}"))
-        })?;
+        encoder
+            .write_all(&img.rgb_data)
+            .map_err(|e| FerroError::Image(format!("Image compression error: {e}")))?;
+        let compressed = encoder
+            .finish()
+            .map_err(|e| FerroError::Image(format!("Image compression finish error: {e}")))?;
 
         let mut xobj = pdf.image_xobject(img.pdf_ref, &compressed);
         xobj.filter(Filter::FlateDecode);

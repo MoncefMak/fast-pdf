@@ -1,6 +1,8 @@
 use crate::display_list::{DrawOp, PageDisplayList};
 use ferropdf_core::layout::Page;
-use ferropdf_core::{BorderCollapse, BorderStyle, Color, LayoutBox, ListStyleType, PageConfig, Rect, TextDecoration};
+use ferropdf_core::{
+    BorderCollapse, BorderStyle, Color, LayoutBox, ListStyleType, PageConfig, Rect, TextDecoration,
+};
 
 /// Paint a page into a display list.
 /// All coordinates are in points typographiques (pt).
@@ -307,9 +309,9 @@ fn paint_borders(layout_box: &LayoutBox, ops: &mut Vec<DrawOp>, rect: Rect) {
 /// Format a list item marker string based on list-style-type.
 fn format_list_marker(list_style: &ListStyleType, index: usize) -> String {
     match list_style {
-        ListStyleType::Disc => "\u{2022}".to_string(),     // •
-        ListStyleType::Circle => "\u{25E6}".to_string(),   // ◦
-        ListStyleType::Square => "\u{25AA}".to_string(),   // ▪
+        ListStyleType::Disc => "\u{2022}".to_string(),   // •
+        ListStyleType::Circle => "\u{25E6}".to_string(), // ◦
+        ListStyleType::Square => "\u{25AA}".to_string(), // ▪
         ListStyleType::Decimal => format!("{}.", index),
         ListStyleType::DecimalLeadingZero => format!("{:02}.", index),
         ListStyleType::LowerAlpha => {
@@ -328,9 +330,19 @@ fn format_list_marker(list_style: &ListStyleType, index: usize) -> String {
 
 fn to_roman(mut n: usize) -> String {
     const VALS: &[(usize, &str)] = &[
-        (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
-        (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
-        (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+        (1000, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
     ];
     let mut result = String::new();
     for &(val, sym) in VALS {

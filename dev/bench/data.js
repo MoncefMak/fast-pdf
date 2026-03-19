@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773908449612,
+  "lastUpdate": 1773910283970,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -1111,6 +1111,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 915696,
             "range": "± 6520",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "62f8908c3379ddfee099f573e2e248b1166f40c2",
+          "message": "chore: bump version to 0.2.4",
+          "timestamp": "2026-03-19T09:49:09+01:00",
+          "tree_id": "46f323a6760930647501d3c066edfa020e7c1ebf",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/62f8908c3379ddfee099f573e2e248b1166f40c2"
+        },
+        "date": 1773910283159,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 2629267,
+            "range": "± 36763",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 3372532,
+            "range": "± 92942",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 221948,
+            "range": "± 2313",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 887808,
+            "range": "± 5990",
             "unit": "ns/iter"
           }
         ]

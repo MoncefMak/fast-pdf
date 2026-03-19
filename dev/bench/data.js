@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773873790442,
+  "lastUpdate": 1773906964007,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -967,6 +967,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 877704,
             "range": "± 6203",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "1be120a4f9bf0173790d098d073e9a515bcfe4cc",
+          "message": "feat: border-collapse, colspan, list markers, pagination, @font-face, text-align fix\n\nPhase 3 — border-collapse, colspan, list-style markers:\n- border-collapse: collapse skips inner cell borders using table_cell_pos\n- colspan support via CellInfo with grid_column span in Taffy\n- list-style-type (disc/circle/square/decimal/roman/alpha) with marker rendering\n\nPhase 4 — table-row-aware pagination + thead repeating:\n- TableRow boxes treated as atomic (never split across pages)\n- fragment_table() paginates row-by-row, clones thead on continuation pages\n- thead_row_count field on LayoutBox via count_thead_rows()\n- Removed dead code: fragment.rs, at_page.rs\n\nPhase 5 — @font-face custom font loading:\n- Parse @font-face rules (font-family, src, font-weight, font-style)\n- Load TTF/OTF from file paths or data: URIs with base64 decoding\n\nFix: text-align container_width in painter.rs:\n- text_content path now uses layout_box.content.width for alignment\n  instead of parent_content_width (which was wrong for table cells)\n- Removed debug eprintln from taffy_bridge.rs and table_layout.rs",
+          "timestamp": "2026-03-19T08:53:46+01:00",
+          "tree_id": "91f0b6e745220221092545108373062230657c52",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/1be120a4f9bf0173790d098d073e9a515bcfe4cc"
+        },
+        "date": 1773906963078,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 3846446,
+            "range": "± 56061",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 4560888,
+            "range": "± 33146",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 236017,
+            "range": "± 4426",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 918513,
+            "range": "± 8034",
             "unit": "ns/iter"
           }
         ]

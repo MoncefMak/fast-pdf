@@ -231,7 +231,7 @@ pub fn parse_stylesheet(css: &str) -> ferropdf_core::Result<Stylesheet> {
 
         // Try to parse at-rules
         let start = parser.state();
-        if let Ok(&Token::AtKeyword(ref name)) = parser.next() {
+        if let Ok(Token::AtKeyword(ref name)) = parser.next() {
             let name_lower = name.to_lowercase();
             if name_lower == "font-face" {
                 if let Some(ff) = parse_font_face_rule(&mut parser) {
@@ -315,8 +315,8 @@ fn parse_font_face_rule(parser: &mut Parser<'_, '_>) -> Option<FontFaceRule> {
             let mut value_parts: Vec<String> = Vec::new();
             loop {
                 match p.next_including_whitespace() {
-                    Ok(&Token::Semicolon) => break,
-                    Ok(&Token::Function(ref name)) if name.eq_ignore_ascii_case("url") => {
+                    Ok(Token::Semicolon) => break,
+                    Ok(Token::Function(ref name)) if name.eq_ignore_ascii_case("url") => {
                         let url = p
                             .parse_nested_block(|pp| -> Result<String, ParseError<'_, ()>> {
                                 match pp.next()? {
@@ -328,17 +328,17 @@ fn parse_font_face_rule(parser: &mut Parser<'_, '_>) -> Option<FontFaceRule> {
                             .unwrap_or_default();
                         value_parts.push(url);
                     }
-                    Ok(&Token::QuotedString(ref s)) => {
+                    Ok(Token::QuotedString(ref s)) => {
                         value_parts.push(s.to_string());
                     }
-                    Ok(&Token::Ident(ref s)) => {
+                    Ok(Token::Ident(ref s)) => {
                         value_parts.push(s.to_string());
                     }
-                    Ok(&Token::Number { value, .. }) => {
-                        value_parts.push(format!("{}", value as i32));
+                    Ok(Token::Number { value, .. }) => {
+                        value_parts.push(format!("{}", *value as i32));
                     }
-                    Ok(&Token::WhiteSpace(_)) => {}
-                    Ok(&Token::Comma) => {}
+                    Ok(Token::WhiteSpace(_)) => {}
+                    Ok(Token::Comma) => {}
                     Err(_) => break,
                     _ => {}
                 }

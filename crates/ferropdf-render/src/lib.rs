@@ -136,9 +136,8 @@ fn load_font_face_data(src: &str, base_url: Option<&str>) -> Option<Vec<u8>> {
     let src = src.trim();
 
     // Data URI
-    if src.starts_with("data:") {
+    if let Some(after_data) = src.strip_prefix("data:") {
         // data:[<mediatype>][;base64],<data>
-        let after_data = &src[5..];
         if let Some(base64_idx) = after_data.find(";base64,") {
             let encoded = &after_data[base64_idx + 8..];
             use base64::Engine as B64Engine;

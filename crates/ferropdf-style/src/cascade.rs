@@ -394,6 +394,27 @@ fn apply_single(
         CssProperty::Visibility => {
             style.visibility = raw != "hidden";
         }
+        CssProperty::BorderCollapse => {
+            style.border_collapse = match raw {
+                "collapse" => ferropdf_core::BorderCollapse::Collapse,
+                _ => ferropdf_core::BorderCollapse::Separate,
+            };
+        }
+        CssProperty::ListStyleType => {
+            style.list_style_type = match raw {
+                "disc" => ferropdf_core::ListStyleType::Disc,
+                "circle" => ferropdf_core::ListStyleType::Circle,
+                "square" => ferropdf_core::ListStyleType::Square,
+                "decimal" => ferropdf_core::ListStyleType::Decimal,
+                "decimal-leading-zero" => ferropdf_core::ListStyleType::DecimalLeadingZero,
+                "lower-alpha" | "lower-latin" => ferropdf_core::ListStyleType::LowerAlpha,
+                "upper-alpha" | "upper-latin" => ferropdf_core::ListStyleType::UpperAlpha,
+                "lower-roman" => ferropdf_core::ListStyleType::LowerRoman,
+                "upper-roman" => ferropdf_core::ListStyleType::UpperRoman,
+                "none" => ferropdf_core::ListStyleType::None,
+                _ => ferropdf_core::ListStyleType::Disc,
+            };
+        }
 
         _ => {} // Unknown or not yet handled
     }

@@ -219,16 +219,16 @@ fn build_table_as_grid(
     let table_result =
         table_layout::compute_table_layout(table_id, available_width, doc, styles, font_system);
 
-    // Collect rows/cells for building Taffy child nodes
-    let rows = table_layout::collect_table_rows(doc, table_id, styles);
+    // Collect rows/cells with colspan info for building Taffy child nodes
+    let cell_rows = table_layout::collect_table_cell_infos(doc, table_id, styles);
 
-    // Build child Taffy nodes for each cell
+    // Build child Taffy nodes for each cell, applying grid-column span for colspan
     let mut cell_taffy_ids = Vec::new();
-    for row in &rows {
-        for &cell_id in row {
+    for row in &cell_rows {
+        for cell in row {
             build_taffy_tree(
                 doc,
-                cell_id,
+                cell.node_id,
                 styles,
                 taffy,
                 node_map,
@@ -236,10 +236,32 @@ fn build_table_as_grid(
                 font_system,
                 available_width,
             )?;
-            if let Some(&tid) = node_map.get(&cell_id) {
+            if let Some(&tid) = node_map.get(&cell.node_id) {
+                // Set grid-column span for cells with colspan > 1
+                if cell.colspan > 1 {
+                    let mut cell_style = taffy
+                        .style(tid)
+                        .map_err(|e| {
+                            ferropdf_core::FerroError::Layout(format!(
+                                "Taffy style read error: {:?}",
+                                e
+                            ))
+                        })?
+                        .clone();
+                    cell_style.grid_column = taffy::Line {
+                        start: taffy::GridPlacement::Auto,
+                        end: taffy::GridPlacement::Span(cell.colspan as u16),
+                    };
+                    taffy.set_style(tid, cell_style).map_err(|e| {
+                        ferropdf_core::FerroError::Layout(format!(
+                            "Taffy set style error: {:?}",
+                            e
+                        ))
+                    })?;
+                }
                 cell_taffy_ids.push(tid);
             }
-            table_cell_parent.insert(cell_id, table_id);
+            table_cell_parent.insert(cell.node_id, table_id);
         }
     }
 
@@ -335,13 +357,20 @@ fn read_layout(
     let mut children = Vec::new();
 
     if style.display == FDisplay::Table {
-        let rows = table_layout::collect_table_rows(doc, node_id, styles);
-        for row in &rows {
-            for &cell_id in row {
-                if node_map.contains_key(&cell_id) {
-                    let child_box = read_layout(
+        let cell_rows = table_layout::collect_table_cell_infos(doc, node_id, styles);
+        let total_rows = cell_rows.len();
+        let total_cols = cell_rows
+            .iter()
+            .map(|r| r.iter().map(|c| c.colspan).sum::<usize>())
+            .max()
+            .unwrap_or(0);
+        for (row_idx, row) in cell_rows.iter().enumerate() {
+            let mut col_idx = 0;
+            for cell in row {
+                if node_map.contains_key(&cell.node_id) {
+                    let mut child_box = read_layout(
                         doc,
-                        cell_id,
+                        cell.node_id,
                         styles,
                         taffy,
                         node_map,
@@ -349,8 +378,10 @@ fn read_layout(
                         x,
                         y,
                     )?;
+                    child_box.table_cell_pos = Some((row_idx, col_idx, total_rows, total_cols));
                     children.push(child_box);
                 }
+                col_idx += cell.colspan;
             }
         }
     } else {
@@ -380,10 +411,26 @@ fn read_layout(
         None
     };
 
+    // Assign list item indices for marker rendering
+    let mut list_idx = 0usize;
+    for child in &mut children {
+        if child.style.display == FDisplay::ListItem {
+            list_idx += 1;
+            child.list_item_index = Some(list_idx);
+        }
+    }
+
     let image_src = if node.tag_name.as_deref() == Some("img") {
         node.attr("src").map(|s| s.to_string())
     } else {
         None
+    };
+
+    // Count thead rows for table pagination
+    let thead_row_count = if style.display == FDisplay::Table {
+        table_layout::count_thead_rows(doc, node_id, styles)
+    } else {
+        0
     };
 
     Ok(LayoutBox {
@@ -402,6 +449,9 @@ fn read_layout(
         out_of_flow: false,
         visual_offset_x: 0.0,
         visual_offset_y: 0.0,
+        table_cell_pos: None,
+        list_item_index: None,
+        thead_row_count,
     })
 }
 

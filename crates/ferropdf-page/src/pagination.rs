@@ -26,7 +26,7 @@
 // =============================================================================
 
 use ferropdf_core::layout::Page;
-use ferropdf_core::{Insets, LayoutBox, PageBreak, PageBreakInside, PageConfig, Rect};
+use ferropdf_core::{Display, Insets, LayoutBox, PageBreak, PageBreakInside, PageConfig, Rect};
 
 // =============================================================================
 // DATA STRUCTURES
@@ -169,10 +169,28 @@ fn fragment_box(layout_box: &LayoutBox, ctx: &mut PaginationContext) {
         return;
     }
 
+    // ─── Rule 3b: Table rows are atomic — never split a row across pages ────
+    let is_table_row = layout_box.style.display == Display::TableRow;
+    if !fits_on_current_page && is_table_row && fits_on_new_page {
+        if !ctx.is_current_page_empty() {
+            ctx.flush_page(layout_box.rect.y);
+        }
+        place_box_on_current_page(layout_box, ctx);
+        if should_break_after(style) {
+            ctx.flush_page(layout_box.rect.y + layout_box.rect.height);
+        }
+        return;
+    }
+
     // ─── Rule 4: The block doesn't fit → fragmentation ─────────────────────
     if !layout_box.children.is_empty() {
-        // Create a container fragment on the current page (preserves background/borders)
-        fragment_container(layout_box, ctx);
+        if layout_box.style.display == Display::Table {
+            // Table-specific pagination with row atomicity and thead repeating
+            fragment_table(layout_box, ctx);
+        } else {
+            // Generic container fragmentation
+            fragment_container(layout_box, ctx);
+        }
     } else {
         // Leaf box (text, image, etc.)
         if ctx.is_current_page_empty() {
@@ -272,6 +290,154 @@ fn fragment_container(layout_box: &LayoutBox, ctx: &mut PaginationContext) {
     }
 }
 
+// =============================================================================
+// TABLE FRAGMENTATION
+// Table-aware pagination: rows are atomic (never split), and <thead> is
+// repeated on each continuation page.
+// =============================================================================
+
+fn fragment_table(table_box: &LayoutBox, ctx: &mut PaginationContext) {
+    use std::collections::BTreeMap;
+
+    let thead_row_count = table_box.thead_row_count;
+
+    // Group cells by row index using table_cell_pos
+    let mut rows: BTreeMap<usize, Vec<&LayoutBox>> = BTreeMap::new();
+    for child in &table_box.children {
+        if let Some((row, _col, _total_r, _total_c)) = child.table_cell_pos {
+            rows.entry(row).or_default().push(child);
+        }
+    }
+
+    // Compute row bounds (min_y, max_bottom) for each row
+    struct RowInfo {
+        row_idx: usize,
+        top: f32,
+        bottom: f32,
+        cells: Vec<LayoutBox>,
+    }
+
+    let row_infos: Vec<RowInfo> = rows
+        .iter()
+        .map(|(&row_idx, cells)| {
+            let top = cells.iter().map(|c| c.rect.y).fold(f32::MAX, f32::min);
+            let bottom = cells
+                .iter()
+                .map(|c| c.rect.y + c.rect.height)
+                .fold(0.0f32, f32::max);
+            RowInfo {
+                row_idx,
+                top,
+                bottom,
+                cells: cells.iter().map(|c| (*c).clone()).collect(),
+            }
+        })
+        .collect();
+
+    // Separate thead rows and body rows
+    let thead_rows: Vec<&RowInfo> = row_infos
+        .iter()
+        .filter(|r| r.row_idx < thead_row_count)
+        .collect();
+    let body_rows: Vec<&RowInfo> = row_infos
+        .iter()
+        .filter(|r| r.row_idx >= thead_row_count)
+        .collect();
+
+    let thead_height: f32 = if !thead_rows.is_empty() {
+        let thead_top = thead_rows.iter().map(|r| r.top).fold(f32::MAX, f32::min);
+        let thead_bottom = thead_rows
+            .iter()
+            .map(|r| r.bottom)
+            .fold(0.0f32, f32::max);
+        thead_bottom - thead_top
+    } else {
+        0.0
+    };
+
+    let mut current_page_children: Vec<LayoutBox> = Vec::new();
+    let mut is_first_page = true;
+
+    // On the first page, thead cells are placed naturally
+    for row in &thead_rows {
+        for cell in &row.cells {
+            let mut placed = cell.clone();
+            offset_y_recursive(&mut placed, -ctx.page_y_offset);
+            current_page_children.push(placed);
+        }
+        let row_bottom_on_page = (row.bottom - ctx.page_y_offset).max(0.0);
+        ctx.used_height = ctx.used_height.max(row_bottom_on_page);
+    }
+
+    for body_row in &body_rows {
+        let row_bottom_on_page = (body_row.bottom - ctx.page_y_offset)
+            + if !is_first_page { thead_height } else { 0.0 };
+        let row_fits = row_bottom_on_page <= ctx.page_height;
+
+        if row_fits {
+            for cell in &body_row.cells {
+                let mut placed = cell.clone();
+                offset_y_recursive(&mut placed, -ctx.page_y_offset);
+                if !is_first_page && thead_height > 0.0 {
+                    offset_y_recursive(&mut placed, thead_height);
+                }
+                current_page_children.push(placed);
+            }
+            ctx.used_height = ctx.used_height.max(row_bottom_on_page);
+        } else {
+            // Flush current page with table wrapper
+            if !current_page_children.is_empty() || !ctx.is_current_page_empty() {
+                if !current_page_children.is_empty() {
+                    let wrapper = make_container_fragment(
+                        table_box,
+                        &current_page_children,
+                        ctx,
+                        is_first_page,
+                        false,
+                    );
+                    ctx.current_page_boxes.push(wrapper);
+                    current_page_children.clear();
+                }
+                ctx.flush_page(body_row.top);
+                is_first_page = false;
+            }
+
+            // On continuation pages, repeat the thead cells
+            if !thead_rows.is_empty() {
+                for thead_row in &thead_rows {
+                    for cell in &thead_row.cells {
+                        let mut repeated = cell.clone();
+                        // Position at Y=0 on the new page
+                        let cell_dy = -repeated.rect.y;
+                        offset_y_recursive(&mut repeated, cell_dy);
+                        current_page_children.push(repeated);
+                    }
+                }
+                ctx.used_height = thead_height;
+            }
+
+            // Place body row cells, shifted down by thead_height
+            for cell in &body_row.cells {
+                let mut placed = cell.clone();
+                offset_y_recursive(&mut placed, -ctx.page_y_offset);
+                if thead_height > 0.0 {
+                    offset_y_recursive(&mut placed, thead_height);
+                }
+                current_page_children.push(placed);
+            }
+            let row_bottom = (body_row.bottom - ctx.page_y_offset) + thead_height;
+            ctx.used_height = ctx.used_height.max(row_bottom);
+        }
+    }
+
+    // Flush remaining cells
+    if !current_page_children.is_empty() {
+        let wrapper =
+            make_container_fragment(table_box, &current_page_children, ctx, is_first_page, true);
+        ctx.current_page_boxes.push(wrapper);
+    }
+}
+
 /// Create a container fragment (partial copy of the parent) that wraps
 /// a subset of children for one page. Preserves background, borders, etc.
 fn make_container_fragment(
@@ -344,6 +510,9 @@ fn make_container_fragment(
         out_of_flow: false,
         visual_offset_x: 0.0,
         visual_offset_y: 0.0,
+        table_cell_pos: None,
+        list_item_index: None,
+        thead_row_count: 0,
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::{Color, ComputedStyle, Insets, NodeId, Rect};
+use crate::{Color, ComputedStyle, Insets, NodeId, Rect, TextDecoration};
 
 /// A styled text span from inline element merging.
 /// When a block container has all-inline children (text, <strong>, <em>, etc.),
@@ -12,6 +12,7 @@ pub struct InlineSpan {
     pub bold: bool,
     pub italic: bool,
     pub color: Color,
+    pub text_decoration: TextDecoration,
 }
 
 /// A styled segment within a shaped line (populated for rich/inline-merged text).
@@ -19,6 +20,7 @@ pub struct InlineSpan {
 pub struct ShapedSegment {
     pub text: String,
     pub x_offset: f32,
+    pub width: f32,
     pub metadata: usize,
 }
 
@@ -124,6 +126,12 @@ pub struct LayoutBox {
     /// Visual offset from position: relative (does not affect flow).
     pub visual_offset_x: f32,
     pub visual_offset_y: f32,
+    /// Table cell grid position (row, col, total_rows, total_cols) for border-collapse.
+    pub table_cell_pos: Option<(usize, usize, usize, usize)>,
+    /// Index of this list item within its parent list (1-based), for marker rendering.
+    pub list_item_index: Option<usize>,
+    /// For Display::Table boxes: number of rows that came from <thead> (for repeat on pagination).
+    pub thead_row_count: usize,
 }
 
 impl Default for LayoutBox {
@@ -144,6 +152,9 @@ impl Default for LayoutBox {
             out_of_flow: false,
             visual_offset_x: 0.0,
             visual_offset_y: 0.0,
+            table_cell_pos: None,
+            list_item_index: None,
+            thead_row_count: 0,
         }
     }
 }

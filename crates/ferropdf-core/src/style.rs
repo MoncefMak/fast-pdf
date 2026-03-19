@@ -180,6 +180,28 @@ pub enum BorderStyle {
     Double,
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum BorderCollapse {
+    #[default]
+    Separate,
+    Collapse,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum ListStyleType {
+    #[default]
+    Disc,
+    Circle,
+    Square,
+    Decimal,
+    DecimalLeadingZero,
+    LowerAlpha,
+    UpperAlpha,
+    LowerRoman,
+    UpperRoman,
+    None,
+}
+
 #[derive(Debug, Clone)]
 pub struct BorderSide {
     pub width: f32,
@@ -288,6 +310,12 @@ pub struct ComputedStyle {
     pub top: Length,
     pub bottom: Length,
 
+    // Table
+    pub border_collapse: BorderCollapse,
+
+    // List
+    pub list_style_type: ListStyleType,
+
     // Pagination
     pub page_break_before: PageBreak,
     pub page_break_after: PageBreak,
@@ -341,6 +369,8 @@ impl Default for ComputedStyle {
             right: Length::Auto,
             top: Length::Auto,
             bottom: Length::Auto,
+            border_collapse: BorderCollapse::Separate,
+            list_style_type: ListStyleType::Disc,
             page_break_before: PageBreak::Auto,
             page_break_after: PageBreak::Auto,
             page_break_inside: PageBreakInside::Auto,

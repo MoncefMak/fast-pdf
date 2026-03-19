@@ -4,6 +4,17 @@ use cssparser::{ParseError, Parser, ParserInput, Token};
 #[derive(Debug, Clone)]
 pub struct Stylesheet {
     pub rules: Vec<StyleRule>,
+    pub font_faces: Vec<FontFaceRule>,
+}
+
+/// A parsed @font-face rule
+#[derive(Debug, Clone)]
+pub struct FontFaceRule {
+    pub font_family: String,
+    /// Font source: url("path/to/font.woff2") or data URI
+    pub src: String,
+    pub font_weight: Option<String>,
+    pub font_style: Option<String>,
 }
 
 /// A single CSS rule: selector(s) + declarations
@@ -154,6 +165,7 @@ impl CssProperty {
             "visibility" => CssProperty::Visibility,
             "box-sizing" => CssProperty::BoxSizing,
             "list-style-type" => CssProperty::ListStyleType,
+            "list-style" => CssProperty::ListStyleType,
             "white-space" => CssProperty::WhiteSpace,
             other => CssProperty::Unknown(other.to_string()),
         }
@@ -204,6 +216,7 @@ pub fn parse_stylesheet(css: &str) -> ferropdf_core::Result<Stylesheet> {
     let mut input = ParserInput::new(css);
     let mut parser = Parser::new(&mut input);
     let mut rules = Vec::new();
+    let mut font_faces = Vec::new();
 
     while !parser.is_exhausted() {
         // Skip whitespace and comments
@@ -216,11 +229,17 @@ pub fn parse_stylesheet(css: &str) -> ferropdf_core::Result<Stylesheet> {
             break;
         }
 
-        // Try to parse @media or other at-rules (skip them for now)
+        // Try to parse at-rules
         let start = parser.state();
-        let is_at_rule = matches!(parser.next(), Ok(&Token::AtKeyword(_)));
-        if is_at_rule {
-            let _ = skip_at_rule(&mut parser);
+        if let Ok(&Token::AtKeyword(ref name)) = parser.next() {
+            let name_lower = name.to_lowercase();
+            if name_lower == "font-face" {
+                if let Some(ff) = parse_font_face_rule(&mut parser) {
+                    font_faces.push(ff);
+                }
+            } else {
+                let _ = skip_at_rule(&mut parser);
+            }
             continue;
         }
         parser.reset(&start);
@@ -235,7 +254,7 @@ pub fn parse_stylesheet(css: &str) -> ferropdf_core::Result<Stylesheet> {
         }
     }
 
-    Ok(Stylesheet { rules })
+    Ok(Stylesheet { rules, font_faces })
 }
 
 fn skip_at_rule(parser: &mut Parser<'_, '_>) -> Result<(), ()> {
@@ -252,6 +271,99 @@ fn skip_at_rule(parser: &mut Parser<'_, '_>) -> Result<(), ()> {
             Err(_) => return Err(()),
             _ => {}
         }
+    }
+}
+
+/// Parse @font-face { font-family: ...; src: url(...); font-weight: ...; font-style: ...; }
+fn parse_font_face_rule(parser: &mut Parser<'_, '_>) -> Option<FontFaceRule> {
+    // Expect a { block
+    if parser.expect_curly_bracket_block().is_err() {
+        return None;
+    }
+
+    let mut font_family = None;
+    let mut src = None;
+    let mut font_weight = None;
+    let mut font_style = None;
+
+    let _ = parser.parse_nested_block(|p| -> Result<(), ParseError<'_, ()>> {
+        while !p.is_exhausted() {
+            // Skip whitespace/semicolons
+            let _ = p.try_parse(|pp| -> Result<(), ParseError<'_, ()>> {
+                pp.expect_whitespace()?;
+                Ok(())
+            });
+            if p.is_exhausted() {
+                break;
+            }
+
+            // Read property name
+            let prop_name = match p.expect_ident() {
+                Ok(name) => name.to_lowercase(),
+                Err(_) => {
+                    let _ = p.next();
+                    continue;
+                }
+            };
+
+            // Expect colon
+            if p.expect_colon().is_err() {
+                continue;
+            }
+
+            // Collect value tokens until semicolon or end
+            let mut value_parts: Vec<String> = Vec::new();
+            loop {
+                match p.next_including_whitespace() {
+                    Ok(&Token::Semicolon) => break,
+                    Ok(&Token::Function(ref name)) if name.eq_ignore_ascii_case("url") => {
+                        let url = p
+                            .parse_nested_block(|pp| -> Result<String, ParseError<'_, ()>> {
+                                match pp.next()? {
+                                    Token::QuotedString(ref s) => Ok(s.to_string()),
+                                    Token::UnquotedUrl(ref s) => Ok(s.to_string()),
+                                    other => Ok(other.to_css_string()),
+                                }
+                            })
+                            .unwrap_or_default();
+                        value_parts.push(url);
+                    }
+                    Ok(&Token::QuotedString(ref s)) => {
+                        value_parts.push(s.to_string());
+                    }
+                    Ok(&Token::Ident(ref s)) => {
+                        value_parts.push(s.to_string());
+                    }
+                    Ok(&Token::Number { value, .. }) => {
+                        value_parts.push(format!("{}", value as i32));
+                    }
+                    Ok(&Token::WhiteSpace(_)) => {}
+                    Ok(&Token::Comma) => {}
+                    Err(_) => break,
+                    _ => {}
+                }
+            }
+
+            let value = value_parts.join(" ").trim().to_string();
+            match prop_name.as_str() {
+                "font-family" => font_family = Some(value),
+                "src" => src = Some(value),
+                "font-weight" => font_weight = Some(value),
+                "font-style" => font_style = Some(value),
+                _ => {}
+            }
+        }
+        Ok(())
+    });
+
+    match (font_family, src) {
+        (Some(family), Some(src)) => Some(FontFaceRule {
+            font_family: family,
+            src,
+            font_weight,
+            font_style,
+        }),
+        _ => None,
     }
 }
 

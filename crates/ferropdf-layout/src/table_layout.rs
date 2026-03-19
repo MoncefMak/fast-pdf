@@ -33,6 +33,13 @@ pub struct TableLayoutResult {
     pub taffy_rows: Vec<TrackSizingFunction>,
 }
 
+/// Info about a single table cell, including colspan.
+#[derive(Debug, Clone)]
+pub struct CellInfo {
+    pub node_id: NodeId,
+    pub colspan: usize,
+}
+
 // =============================================================================
 // ENTRY POINT — FULL TABLE LAYOUT COMPUTATION
 // =============================================================================
@@ -51,11 +58,17 @@ pub fn compute_table_layout(
     styles: &StyleTree,
     font_system: &mut FontSystem,
 ) -> TableLayoutResult {
-    // Phase 0: collect rows
-    let rows = collect_table_rows(doc, table_id, styles);
-    let num_cols = rows.iter().map(|r| r.len()).max().unwrap_or(1).max(1);
+    // Phase 0: collect rows with colspan info
+    let cell_rows = collect_table_cell_infos(doc, table_id, styles);
+    // Effective number of columns (accounting for colspan)
+    let num_cols = cell_rows
+        .iter()
+        .map(|r| r.iter().map(|c| c.colspan).sum::<usize>())
+        .max()
+        .unwrap_or(1)
+        .max(1);
 
-    if rows.is_empty() {
+    if cell_rows.is_empty() {
         return TableLayoutResult {
             column_widths: vec![],
             row_heights: vec![],
@@ -66,12 +79,21 @@ pub fn compute_table_layout(
         };
     }
 
-    // Phase 1: compute column widths
-    let column_widths =
-        compute_column_widths(&rows, num_cols, table_width, doc, styles, font_system);
+    // Phase 1: compute column widths (colspan-aware)
+    let column_widths = compute_column_widths_with_colspan(
+        &cell_rows,
+        num_cols,
+        table_width,
+        doc,
+        styles,
+        font_system,
+    );
 
-    // Phase 2: compute row heights
-    let row_heights = compute_row_heights(&rows, &column_widths, doc, styles, font_system);
+    log::debug!("[TABLE] rows={} cols={} table_width={:.1}", cell_rows.len(), num_cols, table_width);
+    log::debug!("[TABLE] column_widths={:?}", column_widths);
+
+    // Phase 2: compute row heights (colspan-aware)
+    let row_heights = compute_row_heights_with_colspan(&cell_rows, &column_widths, doc, styles, font_system);
 
     let total_width: f32 = column_widths.iter().sum();
     let total_height: f32 = row_heights.iter().sum();
@@ -95,20 +117,33 @@ pub fn compute_table_layout(
 // CSS 2.1 §17.5.2 (fixed) + §17.5.3 (simplified auto)
 // =============================================================================
 
-fn compute_column_widths(
-    rows: &[Vec<NodeId>],
+fn compute_column_widths_with_colspan(
+    cell_rows: &[Vec<CellInfo>],
     num_cols: usize,
     table_width: f32,
     doc: &Document,
     styles: &StyleTree,
     font_system: &mut FontSystem,
 ) -> Vec<f32> {
-    // Step 1: Fixed widths from CSS width on first cell of each column
+    // Step 1: Fixed widths from CSS width on cells with colspan=1
     let fixed_widths: Vec<Option<f32>> = (0..num_cols)
         .map(|col_idx| {
-            rows.iter()
-                .find_map(|row| row.get(col_idx))
-                .and_then(|&cell_id| styles.get(&cell_id))
+            cell_rows
+                .iter()
+                .find_map(|row| {
+                    let mut effective_col = 0;
+                    for cell in row {
+                        if effective_col == col_idx && cell.colspan == 1 {
+                            return Some(cell.node_id);
+                        }
+                        effective_col += cell.colspan;
+                        if effective_col > col_idx {
+                            break;
+                        }
+                    }
+                    None
+                })
+                .and_then(|cell_id| styles.get(&cell_id))
                 .and_then(|style| match &style.width {
                     Length::Pt(v) => Some(*v),
                     Length::Px(px) => Some(*px),
@@ -118,12 +153,25 @@ fn compute_column_widths(
         })
         .collect();
 
-    // Step 2: Min-content width per column
+    // Step 2: Min-content width per column (only from cells with colspan=1)
     let min_content_widths: Vec<f32> = (0..num_cols)
         .map(|col_idx| {
-            rows.iter()
-                .filter_map(|row| row.get(col_idx))
-                .map(|&cell_id| {
+            cell_rows
+                .iter()
+                .filter_map(|row| {
+                    let mut effective_col = 0;
+                    for cell in row {
+                        if effective_col == col_idx && cell.colspan == 1 {
+                            return Some(cell.node_id);
+                        }
+                        effective_col += cell.colspan;
+                        if effective_col > col_idx {
+                            break;
+                        }
+                    }
+                    None
+                })
+                .map(|cell_id| {
                     let text = collect_text_content(doc, cell_id);
                     if text.is_empty() {
                         return 0.0;
@@ -136,7 +184,6 @@ fn compute_column_widths(
                         .cloned()
                         .unwrap_or_else(|| "sans-serif".to_string());
                     let pad_h = resolve_px(&style.padding[1]) + resolve_px(&style.padding[3]);
-
                     measure_min_content_width(&text, font_size, &font_family, font_system) + pad_h
                 })
                 .fold(0.0_f32, f32::max)
@@ -147,51 +194,85 @@ fn compute_column_widths(
     let fixed_total: f32 = fixed_widths.iter().filter_map(|w| *w).sum();
     let available_for_flexible = (table_width - fixed_total).max(0.0);
 
-    // Distribute available space proportionally to min-content widths.
-    // CSS §17.5: columns never shrink below their min-content width.
-    // If total min-content > available, the table overflows (columns keep min-content).
-    // If total min-content <= available, extra space is distributed proportionally.
+    log::debug!("[TABLE] fixed_widths={:?}", fixed_widths);
+    log::debug!("[TABLE] min_content_widths={:?}", min_content_widths);
+
     let total_min: f32 = min_content_widths.iter().sum();
 
-    (0..num_cols)
+    let mut widths: Vec<f32> = (0..num_cols)
         .map(|i| {
             if let Some(fixed) = fixed_widths[i] {
                 fixed
             } else if total_min <= 0.0 {
                 available_for_flexible / (num_cols as f32)
             } else if total_min <= available_for_flexible {
-                // Enough space: min-content + proportional share of remaining
                 let remaining = available_for_flexible - total_min;
                 let ratio = min_content_widths[i] / total_min;
                 min_content_widths[i] + remaining * ratio
             } else {
-                // Not enough space: keep min-content width (table overflows)
                 min_content_widths[i]
             }
         })
-        .collect()
+        .collect();
+
+    // Step 4: Colspan cells may need wider columns. Distribute their width
+    // across the spanned columns if the sum is less than the cell's content.
+    for row in cell_rows {
+        let mut effective_col = 0;
+        for cell in row {
+            if cell.colspan > 1 {
+                let text = collect_text_content(doc, cell.node_id);
+                let style = styles.get(&cell.node_id).cloned().unwrap_or_default();
+                let font_size = style.font_size;
+                let font_family = style
+                    .font_family
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "sans-serif".to_string());
+                let pad_h = resolve_px(&style.padding[1]) + resolve_px(&style.padding[3]);
+                let needed = if text.is_empty() {
+                    0.0
+                } else {
+                    measure_min_content_width(&text, font_size, &font_family, font_system) + pad_h
+                };
+
+                let end_col = (effective_col + cell.colspan).min(num_cols);
+                let current_sum: f32 = widths[effective_col..end_col].iter().sum();
+                if needed > current_sum && end_col > effective_col {
+                    let deficit = needed - current_sum;
+                    let per_col = deficit / (end_col - effective_col) as f32;
+                    for w in &mut widths[effective_col..end_col] {
+                        *w += per_col;
+                    }
+                }
+            }
+            effective_col += cell.colspan;
+        }
+    }
+
+    widths
 }
 
-// =============================================================================
-// PHASE 2 — CALCUL DES HAUTEURS DE LIGNES
-// CSS 2.1 §17.5 — Row height = max(height of cells in row)
-// =============================================================================
-
-fn compute_row_heights(
-    rows: &[Vec<NodeId>],
+fn compute_row_heights_with_colspan(
+    cell_rows: &[Vec<CellInfo>],
     column_widths: &[f32],
     doc: &Document,
     styles: &StyleTree,
     font_system: &mut FontSystem,
 ) -> Vec<f32> {
-    rows.iter()
+    cell_rows
+        .iter()
         .map(|row| {
+            let mut effective_col = 0;
             row.iter()
-                .enumerate()
-                .map(|(col_idx, &cell_id)| {
-                    let text = collect_text_content(doc, cell_id);
-                    let style = styles.get(&cell_id).cloned().unwrap_or_default();
-                    let cell_width = column_widths.get(col_idx).cloned().unwrap_or(50.0);
+                .map(|cell| {
+                    let text = collect_text_content(doc, cell.node_id);
+                    let style = styles.get(&cell.node_id).cloned().unwrap_or_default();
+                    // Cell width is the sum of spanned column widths
+                    let end_col = (effective_col + cell.colspan).min(column_widths.len());
+                    let cell_width: f32 = column_widths[effective_col..end_col].iter().sum();
+                    effective_col = end_col;
+
                     let font_size = style.font_size;
                     let font_family = style
                         .font_family
@@ -200,10 +281,7 @@ fn compute_row_heights(
                         .unwrap_or_else(|| "sans-serif".to_string());
                     let padding_v = resolve_px(&style.padding[0]) + resolve_px(&style.padding[2]);
                     let padding_h = resolve_px(&style.padding[1]) + resolve_px(&style.padding[3]);
-                    // Measure text at the content width (column width minus cell padding),
-                    // matching the width Taffy will give the cell content area.
                     let content_width = (cell_width - padding_h).max(0.0);
-
                     measure_text_height(&text, content_width, font_size, &font_family, font_system)
                         + padding_v
                 })
@@ -296,6 +374,18 @@ pub fn collect_table_rows(
     table_id: NodeId,
     styles: &StyleTree,
 ) -> Vec<Vec<NodeId>> {
+    collect_table_cell_infos(doc, table_id, styles)
+        .into_iter()
+        .map(|row| row.into_iter().map(|c| c.node_id).collect())
+        .collect()
+}
+
+/// Collect all rows with colspan info.
+pub fn collect_table_cell_infos(
+    doc: &Document,
+    table_id: NodeId,
+    styles: &StyleTree,
+) -> Vec<Vec<CellInfo>> {
     let mut rows = Vec::new();
     let table_node = doc.get(table_id);
 
@@ -303,14 +393,14 @@ pub fn collect_table_rows(
         let child_style = styles.get(&child_id).cloned().unwrap_or_default();
         match child_style.display {
             FDisplay::TableRow => {
-                rows.push(collect_cells(doc, child_id, styles));
+                rows.push(collect_cell_infos(doc, child_id, styles));
             }
             FDisplay::TableHeaderGroup | FDisplay::TableRowGroup | FDisplay::TableFooterGroup => {
                 let group_node = doc.get(child_id);
                 for &row_id in &group_node.children {
                     let row_style = styles.get(&row_id).cloned().unwrap_or_default();
                     if row_style.display == FDisplay::TableRow {
-                        rows.push(collect_cells(doc, row_id, styles));
+                        rows.push(collect_cell_infos(doc, row_id, styles));
                     }
                 }
             }
@@ -320,7 +410,26 @@ pub fn collect_table_rows(
     rows
 }
 
-fn collect_cells(doc: &Document, row_id: NodeId, styles: &StyleTree) -> Vec<NodeId> {
+/// Count the number of rows that come from <thead> elements.
+pub fn count_thead_rows(doc: &Document, table_id: NodeId, styles: &StyleTree) -> usize {
+    let mut count = 0;
+    let table_node = doc.get(table_id);
+    for &child_id in &table_node.children {
+        let child_style = styles.get(&child_id).cloned().unwrap_or_default();
+        if child_style.display == FDisplay::TableHeaderGroup {
+            let group_node = doc.get(child_id);
+            for &row_id in &group_node.children {
+                let row_style = styles.get(&row_id).cloned().unwrap_or_default();
+                if row_style.display == FDisplay::TableRow {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+fn collect_cell_infos(doc: &Document, row_id: NodeId, styles: &StyleTree) -> Vec<CellInfo> {
     let row_node = doc.get(row_id);
     row_node
         .children
@@ -329,7 +438,18 @@ fn collect_cells(doc: &Document, row_id: NodeId, styles: &StyleTree) -> Vec<Node
             let s = styles.get(&child_id).cloned().unwrap_or_default();
             s.display == FDisplay::TableCell
         })
-        .copied()
+        .map(|&child_id| {
+            let colspan = doc
+                .get(child_id)
+                .attr("colspan")
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(1)
+                .max(1);
+            CellInfo {
+                node_id: child_id,
+                colspan,
+            }
+        })
         .collect()
 }
 

@@ -164,6 +164,7 @@ fn collect_spans_from_layout_box(lb: &LayoutBox, spans: &mut Vec<InlineSpan>) {
                 bold: style.font_weight.is_bold(),
                 italic: style.font_style == ferropdf_core::FontStyle::Italic,
                 color: style.color,
+                text_decoration: style.text_decoration.clone(),
             });
         }
     } else {

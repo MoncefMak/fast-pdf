@@ -1,6 +1,6 @@
 use crate::display_list::{DrawOp, PageDisplayList};
 use ferropdf_core::layout::Page;
-use ferropdf_core::{BorderStyle, LayoutBox, PageConfig, Rect};
+use ferropdf_core::{BorderCollapse, BorderStyle, Color, LayoutBox, ListStyleType, PageConfig, Rect, TextDecoration};
 
 /// Paint a page into a display list.
 /// All coordinates are in points typographiques (pt).
@@ -28,7 +28,7 @@ fn paint_box(
     ops: &mut Vec<DrawOp>,
     offset_x: f32,
     offset_y: f32,
-    parent_content_width: f32,
+    _parent_content_width: f32,
 ) {
     let style = &layout_box.style;
 
@@ -36,9 +36,14 @@ fn paint_box(
         return;
     }
 
+    // Accumulate position:relative visual offset into effective offsets.
+    // This shifts this box, its text, and all descendants.
+    let eff_x = offset_x + layout_box.visual_offset_x;
+    let eff_y = offset_y + layout_box.visual_offset_y;
+
     let border_box = layout_box.border_box();
-    let x = border_box.x + offset_x;
-    let y = border_box.y + offset_y;
+    let x = border_box.x + eff_x;
+    let y = border_box.y + eff_y;
     let rect = Rect::new(x, y, border_box.width, border_box.height);
 
     // Background
@@ -55,7 +60,7 @@ fn paint_box(
 
     // Merged inline text — render with per-segment styling
     if !layout_box.inline_spans.is_empty() && !layout_box.shaped_lines.is_empty() {
-        let text_x = layout_box.content.x + offset_x;
+        let text_x = layout_box.content.x + eff_x;
         // Use this box's own content width for alignment (not parent's),
         // because merge_inline_children shaped text at this box's width.
         let align_container = layout_box.content.width;
@@ -63,7 +68,7 @@ fn paint_box(
             if line.segments.is_empty() {
                 continue;
             }
-            let line_y = layout_box.content.y + offset_y + line.y;
+            let line_y = layout_box.content.y + eff_y + line.y;
 
             // Compute text-align offset for the whole line
             let align_offset = match style.text_align {
@@ -77,9 +82,10 @@ fn paint_box(
                     continue;
                 }
                 let span = &layout_box.inline_spans[seg.metadata];
+                let seg_x = text_x + seg.x_offset + align_offset;
                 ops.push(DrawOp::DrawText {
                     text: seg.text.clone(),
-                    x: text_x + seg.x_offset + align_offset,
+                    x: seg_x,
                     y: line_y,
                     font_size: span.font_size,
                     color: span.color,
@@ -89,6 +95,15 @@ fn paint_box(
                     text_align: ferropdf_core::TextAlign::Left,
                     container_width: 0.0,
                 });
+                emit_text_decoration(
+                    ops,
+                    &span.text_decoration,
+                    seg_x,
+                    line_y,
+                    seg.width,
+                    span.font_size,
+                    span.color,
+                );
             }
         }
     }
@@ -97,33 +112,50 @@ fn paint_box(
     else if let Some(ref text) = layout_box.text_content {
         let text = text.trim();
         if !text.is_empty() {
-            let text_x = layout_box.content.x + offset_x;
+            let text_x = layout_box.content.x + eff_x;
 
             if !layout_box.shaped_lines.is_empty() {
-                // Emit one DrawText per shaped line — no re-wrap needed in pdf.rs
+                // Emit one DrawText per shaped line — no re-wrap needed in pdf.rs.
+                // Compute text-align offset here (not in pdf.rs) so we use the
+                // correct container width — this box's own content.width.
+                let align_container = layout_box.content.width;
                 for line in &layout_box.shaped_lines {
                     let line_text = line.text.trim();
                     if line_text.is_empty() {
                         continue;
                     }
+                    let align_offset = match style.text_align {
+                        ferropdf_core::TextAlign::Right => align_container - line.width,
+                        ferropdf_core::TextAlign::Center => (align_container - line.width) / 2.0,
+                        _ => 0.0,
+                    };
                     // y = content origin + line's baseline Y (from cosmic-text)
-                    let line_y = layout_box.content.y + offset_y + line.y;
+                    let line_y = layout_box.content.y + eff_y + line.y;
                     ops.push(DrawOp::DrawText {
                         text: line_text.to_string(),
-                        x: text_x,
+                        x: text_x + align_offset,
                         y: line_y,
                         font_size: style.font_size,
                         color: style.color,
                         font_family: style.font_family.clone(),
                         bold: style.font_weight.is_bold(),
                         italic: style.font_style == ferropdf_core::FontStyle::Italic,
-                        text_align: style.text_align,
-                        container_width: parent_content_width,
+                        text_align: ferropdf_core::TextAlign::Left,
+                        container_width: 0.0,
                     });
+                    emit_text_decoration(
+                        ops,
+                        &style.text_decoration,
+                        text_x,
+                        line_y,
+                        line.width,
+                        style.font_size,
+                        style.color,
+                    );
                 }
             } else {
                 // Fallback: emit the full text (pdf.rs will word-wrap it)
-                let text_y = layout_box.content.y + offset_y + style.font_size * 0.8;
+                let text_y = layout_box.content.y + eff_y + style.font_size * 0.8;
                 ops.push(DrawOp::DrawText {
                     text: text.to_string(),
                     x: text_x,
@@ -134,24 +166,105 @@ fn paint_box(
                     bold: style.font_weight.is_bold(),
                     italic: style.font_style == ferropdf_core::FontStyle::Italic,
                     text_align: style.text_align,
-                    container_width: parent_content_width,
+                    container_width: layout_box.content.width,
                 });
+                emit_text_decoration(
+                    ops,
+                    &style.text_decoration,
+                    text_x,
+                    text_y,
+                    layout_box.content.width,
+                    style.font_size,
+                    style.color,
+                );
             }
         }
     }
 
-    // Children — pass this box's content width as the parent width for descendants
+    // Image
+    if let Some(ref src) = layout_box.image_src {
+        ops.push(DrawOp::DrawImage {
+            src: src.clone(),
+            rect: Rect::new(
+                layout_box.content.x + eff_x,
+                layout_box.content.y + eff_y,
+                layout_box.content.width,
+                layout_box.content.height,
+            ),
+        });
+    }
+
+    // List item marker (bullet or number)
+    if let Some(idx) = layout_box.list_item_index {
+        let marker_text = format_list_marker(&style.list_style_type, idx);
+        if !marker_text.is_empty() {
+            let marker_x = layout_box.content.x + eff_x - style.font_size * 1.2;
+            let marker_y = layout_box.content.y + eff_y + style.font_size * 0.8;
+            ops.push(DrawOp::DrawText {
+                text: marker_text,
+                x: marker_x,
+                y: marker_y,
+                font_size: style.font_size,
+                color: style.color,
+                font_family: style.font_family.clone(),
+                bold: false,
+                italic: false,
+                text_align: ferropdf_core::TextAlign::Left,
+                container_width: 0.0,
+            });
+        }
+    }
+
+    // Children — propagate effective offset (includes ancestor relative shifts)
     let my_content_width = layout_box.content.width;
     for child in &layout_box.children {
-        paint_box(child, ops, offset_x, offset_y, my_content_width);
+        paint_box(child, ops, eff_x, eff_y, my_content_width);
     }
+}
+
+/// Emit a thin FillRect for text-decoration (underline, line-through, overline).
+fn emit_text_decoration(
+    ops: &mut Vec<DrawOp>,
+    decoration: &TextDecoration,
+    x: f32,
+    y: f32,
+    width: f32,
+    font_size: f32,
+    color: Color,
+) {
+    let thickness = (font_size * 0.07).max(0.5);
+    let line_y = match decoration {
+        TextDecoration::Underline => y + font_size * 0.15,
+        TextDecoration::LineThrough => y - font_size * 0.3,
+        TextDecoration::Overline => y - font_size * 0.8,
+        TextDecoration::None => return,
+    };
+    ops.push(DrawOp::FillRect {
+        rect: Rect::new(x, line_y, width, thickness),
+        color,
+        border_radius: [0.0; 4],
+    });
 }
 
 fn paint_borders(layout_box: &LayoutBox, ops: &mut Vec<DrawOp>, rect: Rect) {
     let style = &layout_box.style;
 
+    // border-collapse: suppress duplicate inner borders for table cells.
+    // For collapsed cells, only draw top border if on first row,
+    // and only draw left border if in first column.
+    let collapse = style.border_collapse == BorderCollapse::Collapse;
+    let (skip_top, skip_left) = if collapse {
+        if let Some((row, col, _total_rows, _total_cols)) = layout_box.table_cell_pos {
+            (row > 0, col > 0)
+        } else {
+            (false, false)
+        }
+    } else {
+        (false, false)
+    };
+
     // Top border
-    if style.border_top.width > 0.0 && style.border_top.style != BorderStyle::None {
+    if !skip_top && style.border_top.width > 0.0 && style.border_top.style != BorderStyle::None {
         ops.push(DrawOp::StrokeRect {
             rect: Rect::new(rect.x, rect.y, rect.width, 0.0),
             color: style.border_top.color,
@@ -181,7 +294,7 @@ fn paint_borders(layout_box: &LayoutBox, ops: &mut Vec<DrawOp>, rect: Rect) {
     }
 
     // Left border
-    if style.border_left.width > 0.0 && style.border_left.style != BorderStyle::None {
+    if !skip_left && style.border_left.width > 0.0 && style.border_left.style != BorderStyle::None {
         ops.push(DrawOp::StrokeRect {
             rect: Rect::new(rect.x, rect.y, 0.0, rect.height),
             color: style.border_left.color,
@@ -189,4 +302,42 @@ fn paint_borders(layout_box: &LayoutBox, ops: &mut Vec<DrawOp>, rect: Rect) {
             style: style.border_left.style.clone(),
         });
     }
+}
+
+/// Format a list item marker string based on list-style-type.
+fn format_list_marker(list_style: &ListStyleType, index: usize) -> String {
+    match list_style {
+        ListStyleType::Disc => "\u{2022}".to_string(),     // •
+        ListStyleType::Circle => "\u{25E6}".to_string(),   // ◦
+        ListStyleType::Square => "\u{25AA}".to_string(),   // ▪
+        ListStyleType::Decimal => format!("{}.", index),
+        ListStyleType::DecimalLeadingZero => format!("{:02}.", index),
+        ListStyleType::LowerAlpha => {
+            let c = (b'a' + ((index - 1) % 26) as u8) as char;
+            format!("{}.", c)
+        }
+        ListStyleType::UpperAlpha => {
+            let c = (b'A' + ((index - 1) % 26) as u8) as char;
+            format!("{}.", c)
+        }
+        ListStyleType::LowerRoman => format!("{}.", to_roman(index).to_lowercase()),
+        ListStyleType::UpperRoman => format!("{}.", to_roman(index)),
+        ListStyleType::None => String::new(),
+    }
+}
+
+fn to_roman(mut n: usize) -> String {
+    const VALS: &[(usize, &str)] = &[
+        (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
+        (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+        (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+    ];
+    let mut result = String::new();
+    for &(val, sym) in VALS {
+        while n >= val {
+            result.push_str(sym);
+            n -= val;
+        }
+    }
+    result
 }

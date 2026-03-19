@@ -79,14 +79,23 @@ pub fn render_with_cache(
         }
     }
 
-    // 3. Build page config
+    // 3. Load @font-face custom fonts
+    for sheet in &stylesheets {
+        for ff in &sheet.font_faces {
+            if let Some(data) = load_font_face_data(&ff.src, opts.base_url.as_deref()) {
+                font_db.load_font_data(data);
+            }
+        }
+    }
+
+    // 4. Build page config
     let page_config = PageConfig {
         size: PageSize::from_str(&opts.page_size),
         margins: PageMargins::from_css_str(&opts.margin),
         orientation: ferropdf_core::Orientation::Portrait,
     };
 
-    // 4. Resolve styles (all values resolved to pt)
+    // 5. Resolve styles (all values resolved to pt)
     let styles = ferropdf_style::resolve(
         &parse_result.document,
         &stylesheets,
@@ -94,7 +103,7 @@ pub fn render_with_cache(
         page_config.content_width_pt(),
     )?;
 
-    // 5. Layout with Taffy (all in points typographiques)
+    // 6. Layout with Taffy (all in points typographiques)
     let layout_tree = ferropdf_layout::layout_with_fonts(
         &parse_result.document,
         &styles,
@@ -103,18 +112,55 @@ pub fn render_with_cache(
         font_db,
     )?;
 
-    // 6. Paginate
+    // 7. Paginate
     let pages = ferropdf_page::paginate(&layout_tree, &page_config)?;
 
-    // 7. Build display lists
+    // 8. Build display lists
     let display_lists: Vec<_> = pages
         .iter()
         .map(|page| painter::paint_page(page, &page_config))
         .collect();
 
-    // 8. Write PDF (reuse fontdb from cosmic-text — no second load_system_fonts)
+    // 9. Write PDF (reuse fontdb from cosmic-text — no second load_system_fonts)
     let db_guard = font_db.fontdb();
     let pdf_bytes = pdf::write_pdf(&display_lists, &page_config, opts, Some(db_guard.db()))?;
 
     Ok(pdf_bytes)
+}
+
+/// Load font data from a @font-face src value.
+/// Supports:
+///   - File paths: url("path/to/font.ttf") → resolved against base_url
+///   - Data URIs: data:font/ttf;base64,... or data:application/x-font-ttf;base64,...
+fn load_font_face_data(src: &str, base_url: Option<&str>) -> Option<Vec<u8>> {
+    let src = src.trim();
+
+    // Data URI
+    if src.starts_with("data:") {
+        // data:[<mediatype>][;base64],<data>
+        let after_data = &src[5..];
+        if let Some(base64_idx) = after_data.find(";base64,") {
+            let encoded = &after_data[base64_idx + 8..];
+            use base64::Engine as B64Engine;
+            return base64::engine::general_purpose::STANDARD
+                .decode(encoded.trim())
+                .ok();
+        }
+        return None;
+    }
+
+    // File path
+    let path = if let Some(base) = base_url {
+        let base_dir = std::path::Path::new(base);
+        let base_dir = if base_dir.is_file() {
+            base_dir.parent().unwrap_or(base_dir)
+        } else {
+            base_dir
+        };
+        base_dir.join(src)
+    } else {
+        std::path::PathBuf::from(src)
+    };
+
+    std::fs::read(&path).ok()
 }

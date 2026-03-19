@@ -1,7 +1,3 @@
-#[allow(dead_code)]
-mod at_page;
-#[allow(dead_code)]
-mod fragment;
 pub mod pagination;
 
 pub use ferropdf_core::layout::Page;

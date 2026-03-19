@@ -15,6 +15,8 @@ pub fn inherit_from(parent: &ComputedStyle) -> ComputedStyle {
         visibility: parent.visibility,
         orphans: parent.orphans,
         widows: parent.widows,
+        border_collapse: parent.border_collapse.clone(),
+        list_style_type: parent.list_style_type.clone(),
         ..Default::default()
     }
 }

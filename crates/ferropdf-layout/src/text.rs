@@ -45,6 +45,12 @@ impl FontDatabase {
         }
     }
 
+    /// Load custom font data (TTF/OTF bytes) into the font database.
+    pub fn load_font_data(&self, data: Vec<u8>) {
+        let mut fs = self.inner.lock().unwrap();
+        fs.db_mut().load_font_data(data);
+    }
+
     /// Measure a text block with wrapping at the given width.
     /// Returns (width, height) in typographic points.
     #[allow(clippy::too_many_arguments)]
@@ -333,9 +339,11 @@ pub fn shape_rich_text_lines(
                         .get(seg_start_byte..seg_end_byte)
                         .unwrap_or("")
                         .to_string();
+                    let seg_width = glyph.x - seg_x;
                     segments.push(ShapedSegment {
                         text: seg_text,
                         x_offset: seg_x,
+                        width: seg_width.max(0.0),
                         metadata: current_meta,
                     });
                 }
@@ -364,9 +372,11 @@ pub fn shape_rich_text_lines(
                 .get(seg_start_byte..seg_end_byte)
                 .unwrap_or("")
                 .to_string();
+            let seg_width = run.line_w - seg_x;
             segments.push(ShapedSegment {
                 text: seg_text,
                 x_offset: seg_x,
+                width: seg_width.max(0.0),
                 metadata: current_meta,
             });
         }

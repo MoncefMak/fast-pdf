@@ -7,6 +7,7 @@ use pdf_writer::types::FontFlags;
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfWriterRect, Ref, Str, TextStr};
 use std::collections::HashMap;
 use std::io::Write;
+use std::path::Path;
 
 // =============================================================================
 // HTML/CSS → PDF COORDINATE CONVERSION
@@ -230,6 +231,38 @@ pub fn write_pdf(
         content_refs.push(next_ref());
     }
 
+    // ── Load images ──
+    let mut image_map: HashMap<String, LoadedImage> = HashMap::new();
+    let mut img_counter = 0u32;
+    for display_list in pages {
+        for op in &display_list.ops {
+            if let DrawOp::DrawImage { src, .. } = op {
+                if !image_map.contains_key(src) {
+                    match load_image(src) {
+                        Ok((rgb_data, width, height)) => {
+                            let pdf_ref = next_ref();
+                            let pdf_name = format!("Im{img_counter}");
+                            img_counter += 1;
+                            image_map.insert(
+                                src.clone(),
+                                LoadedImage {
+                                    rgb_data,
+                                    width,
+                                    height,
+                                    pdf_ref,
+                                    pdf_name,
+                                },
+                            );
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to load image {}: {}", src, e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Write catalog
     pdf.catalog(catalog_ref).pages(page_tree_ref);
 
@@ -249,7 +282,7 @@ pub fn write_pdf(
         page.parent(page_tree_ref);
         page.media_box(PdfWriterRect::new(0.0, 0.0, page_w, page_h));
 
-        // Resources with fonts
+        // Resources with fonts and images
         let mut resources = page.resources();
         let mut fonts = resources.fonts();
         fonts.pair(Name(b"F1"), font_ref);
@@ -259,6 +292,13 @@ pub fn write_pdf(
             fonts.pair(Name(ef.pdf_name.as_bytes()), ef.type0_ref);
         }
         fonts.finish();
+        if !image_map.is_empty() {
+            let mut xobjects = resources.x_objects();
+            for img in image_map.values() {
+                xobjects.pair(Name(img.pdf_name.as_bytes()), img.pdf_ref);
+            }
+            xobjects.finish();
+        }
         resources.finish();
 
         page.contents(content_ref);
@@ -398,6 +438,23 @@ pub fn write_pdf(
                 DrawOp::Restore => {
                     content.restore_state();
                 }
+                DrawOp::DrawImage { src, rect } => {
+                    if let Some(img) = image_map.get(src) {
+                        let pr = to_pdf_rect(rect.x, rect.y, rect.width, rect.height, page_h);
+                        // Position image: scale to target size and translate
+                        content.save_state();
+                        content.transform([
+                            pr.width,
+                            0.0,
+                            0.0,
+                            pr.height,
+                            pr.x,
+                            pr.y,
+                        ]);
+                        content.x_object(Name(img.pdf_name.as_bytes()));
+                        content.restore_state();
+                    }
+                }
                 _ => {}
             }
         }
@@ -414,6 +471,26 @@ pub fn write_pdf(
     // Write embedded CIDFont Type0 fonts
     for ef in &embedded_fonts {
         write_cid_font(&mut pdf, ef)?;
+    }
+
+    // Write image XObjects
+    for img in image_map.values() {
+        // Deflate-compress the raw RGB data
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&img.rgb_data).map_err(|e| {
+            FerroError::Image(format!("Image compression error: {e}"))
+        })?;
+        let compressed = encoder.finish().map_err(|e| {
+            FerroError::Image(format!("Image compression finish error: {e}"))
+        })?;
+
+        let mut xobj = pdf.image_xobject(img.pdf_ref, &compressed);
+        xobj.filter(Filter::FlateDecode);
+        xobj.width(img.width as i32);
+        xobj.height(img.height as i32);
+        xobj.color_space().device_rgb();
+        xobj.bits_per_component(8);
+        xobj.finish();
     }
 
     // Write metadata
@@ -837,4 +914,39 @@ fn unicode_to_winansi(c: char) -> u8 {
         0x0178 => 0x9F, // Ÿ
         _ => b'?',
     }
+}
+
+// =============================================================================
+// IMAGE LOADING
+// =============================================================================
+
+struct LoadedImage {
+    rgb_data: Vec<u8>,
+    width: u32,
+    height: u32,
+    pdf_ref: Ref,
+    pdf_name: String,
+}
+
+/// Load image from a source string (file path or data URI).
+fn load_image(src: &str) -> Result<(Vec<u8>, u32, u32), FerroError> {
+    let data = if src.starts_with("data:") {
+        // data URI — extract base64 payload
+        let comma = src
+            .find(',')
+            .ok_or_else(|| FerroError::Image("Invalid data URI: no comma".into()))?;
+        let encoded = &src[comma + 1..];
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)
+            .map_err(|e| FerroError::Image(format!("Base64 decode error: {e}")))?
+    } else {
+        // File path
+        std::fs::read(Path::new(src))
+            .map_err(|e| FerroError::Image(format!("Cannot read image {src}: {e}")))?
+    };
+
+    let img = image::load_from_memory(&data)
+        .map_err(|e| FerroError::Image(format!("Cannot decode image {src}: {e}")))?;
+    let rgb = img.to_rgb8();
+    let (w, h) = rgb.dimensions();
+    Ok((rgb.into_raw(), w, h))
 }

@@ -18,7 +18,7 @@ pub use layout::{
 pub use length::Length;
 pub use page::{Orientation, PageConfig, PageMargins, PageSize};
 pub use style::{
-    AlignItems, AlignSelf, BorderRadius, BorderSide, BorderStyle, BoxDecorationBreak,
-    ComputedStyle, Display, FlexDirection, FlexWrap, FontStyle, FontWeight, JustifyContent,
-    PageBreak, PageBreakInside, Position, TextAlign,
+    AlignItems, AlignSelf, BorderCollapse, BorderRadius, BorderSide, BorderStyle,
+    BoxDecorationBreak, ComputedStyle, Display, FlexDirection, FlexWrap, FontStyle, FontWeight,
+    JustifyContent, ListStyleType, PageBreak, PageBreakInside, Position, TextAlign, TextDecoration,
 };

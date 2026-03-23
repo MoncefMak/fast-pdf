@@ -30,7 +30,6 @@ pub struct ShapedGlyph {
     pub x: f32,
     pub y: f32,
     pub advance: f32,
-    pub font_id: u64,
     pub metadata: usize,
 }
 
@@ -43,65 +42,6 @@ pub struct ShapedLine {
     pub text: String,
     /// Per-segment styling info (non-empty only for inline-merged rich text).
     pub segments: Vec<ShapedSegment>,
-}
-
-// =============================================================================
-// BreakUnit — Breakable unit for smart pagination
-// =============================================================================
-// After Taffy layout + cosmic-text shaping, we build a flat list of breakable
-// units. Each unit is the smallest entity that can be moved without breaking
-// the document's meaning.
-// =============================================================================
-
-/// A breakable unit — the smallest entity that can be moved
-/// without breaking the document's meaning.
-#[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
-pub enum BreakUnit {
-    /// A single line from cosmic-text layout_runs().
-    TextLine {
-        /// Y coordinate of the line top (absolute continuous space, in pt).
-        y_top: f32,
-        /// Y coordinate of the line bottom (absolute continuous space, in pt).
-        y_bottom: f32,
-        /// Line index within its parent paragraph.
-        line_index: usize,
-        /// NodeId of the parent text node (to group lines from the same paragraph).
-        parent_node: Option<NodeId>,
-        /// Shaped content of the line.
-        content: ShapedLine,
-    },
-    /// Non-breakable block (image, container with break-inside: avoid).
-    Atomic {
-        /// Y coordinate of the block top (absolute continuous space, in pt).
-        y_top: f32,
-        /// Y coordinate of the block bottom (absolute continuous space, in pt).
-        y_bottom: f32,
-        /// The complete LayoutBox.
-        node: LayoutBox,
-    },
-    /// Forced page break marker (break-before: page).
-    ForcedBreak,
-}
-
-impl BreakUnit {
-    /// Y of the unit's top in continuous space (pt).
-    pub fn y_top(&self) -> f32 {
-        match self {
-            BreakUnit::TextLine { y_top, .. } => *y_top,
-            BreakUnit::Atomic { y_top, .. } => *y_top,
-            BreakUnit::ForcedBreak => 0.0,
-        }
-    }
-
-    /// Y of the unit's bottom in continuous space (pt).
-    pub fn y_bottom(&self) -> f32 {
-        match self {
-            BreakUnit::TextLine { y_bottom, .. } => *y_bottom,
-            BreakUnit::Atomic { y_bottom, .. } => *y_bottom,
-            BreakUnit::ForcedBreak => 0.0,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +62,7 @@ pub struct LayoutBox {
     pub image_src: Option<String>,
     pub text_content: Option<String>,
     /// True if this box is absolutely positioned (out of normal flow).
+    // Reserved for future position:absolute support. Always false currently.
     pub out_of_flow: bool,
     /// Visual offset from position: relative (does not affect flow).
     pub visual_offset_x: f32,

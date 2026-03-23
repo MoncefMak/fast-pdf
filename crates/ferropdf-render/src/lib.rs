@@ -1,4 +1,5 @@
 mod display_list;
+mod font_subsetter;
 mod painter;
 mod pdf;
 

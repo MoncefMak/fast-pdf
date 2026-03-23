@@ -254,7 +254,6 @@ pub fn shape_text_lines(
                 x: glyph.x,
                 y: glyph.y,
                 advance: glyph.w,
-                font_id: 0, // fontdb::ID is opaque; not needed for PDF rendering
                 metadata: 0,
             });
         }
@@ -360,7 +359,6 @@ pub fn shape_rich_text_lines(
                 x: glyph.x,
                 y: glyph.y,
                 advance: glyph.w,
-                font_id: 0,
                 metadata: glyph.metadata,
             });
         }

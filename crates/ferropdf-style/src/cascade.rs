@@ -110,9 +110,10 @@ fn apply_single(
         CssProperty::Position => {
             style.position = match raw {
                 "relative" => Position::Relative,
-                "absolute" => Position::Absolute,
-                "fixed" => Position::Fixed,
-                "sticky" => Position::Sticky,
+                "absolute" | "fixed" | "sticky" => {
+                    log::warn!("ferropdf: position:{} is parsed but not rendered — treated as static", raw);
+                    Position::Static
+                }
                 _ => Position::Static,
             };
         }

@@ -3,7 +3,7 @@ mod font_subsetter;
 mod painter;
 mod pdf;
 
-use ferropdf_core::{PageConfig, PageMargins, PageSize};
+use ferropdf_core::{PageConfig, PageMargins, PageSize, RenderWarning};
 pub use ferropdf_layout::FontDatabase;
 
 /// Rendering options passed from Python bindings.
@@ -15,19 +15,26 @@ pub struct RenderOptions {
     pub author: Option<String>,
 }
 
+/// Result of a render operation: PDF bytes + any non-fatal warnings.
+pub struct RenderResult {
+    pub pdf_bytes: Vec<u8>,
+    pub warnings: Vec<RenderWarning>,
+}
+
 /// Main entry point: render HTML string to PDF bytes.
 pub fn render(html: &str, opts: &RenderOptions) -> ferropdf_core::Result<Vec<u8>> {
-    // Create one FontDatabase, use it for both layout and PDF writing
     let font_db = FontDatabase::new();
     render_with_cache(html, opts, &font_db)
 }
 
-/// Render HTML to PDF, reusing a cached FontDatabase for speed.
-pub fn render_with_cache(
+/// Render HTML to PDF with warnings, reusing a cached FontDatabase.
+pub fn render_with_warnings(
     html: &str,
     opts: &RenderOptions,
     font_db: &FontDatabase,
-) -> ferropdf_core::Result<Vec<u8>> {
+) -> ferropdf_core::Result<RenderResult> {
+    let mut warnings: Vec<RenderWarning> = Vec::new();
+
     // 1. Parse HTML
     let parse_result = ferropdf_parse::parse(html)?;
 
@@ -43,14 +50,13 @@ pub fn render_with_cache(
     // Load external stylesheets (local files only for v1)
     for stylesheet_url in &parse_result.external_stylesheets {
         if stylesheet_url.starts_with("http://") || stylesheet_url.starts_with("https://") {
-            eprintln!(
-                "[ferropdf] warning: external HTTP stylesheet ignored: {}",
-                stylesheet_url
-            );
+            warnings.push(RenderWarning::StylesheetFailed {
+                path: stylesheet_url.clone(),
+                reason: "external HTTP stylesheets not supported".into(),
+            });
             continue;
         }
 
-        // Resolve relative path against base_url if provided
         let path = if let Some(ref base) = opts.base_url {
             let base_dir = std::path::Path::new(base);
             let base_dir = if base_dir.is_file() {
@@ -66,17 +72,19 @@ pub fn render_with_cache(
         match std::fs::read_to_string(&path) {
             Ok(css_content) => match ferropdf_parse::parse_stylesheet(&css_content) {
                 Ok(sheet) => stylesheets.push(sheet),
-                Err(e) => eprintln!(
-                    "[ferropdf] warning: failed to parse {}: {}",
-                    path.display(),
-                    e
-                ),
+                Err(e) => {
+                    warnings.push(RenderWarning::StylesheetFailed {
+                        path: path.display().to_string(),
+                        reason: e.to_string(),
+                    });
+                }
             },
-            Err(e) => eprintln!(
-                "[ferropdf] warning: could not read {}: {}",
-                path.display(),
-                e
-            ),
+            Err(e) => {
+                warnings.push(RenderWarning::StylesheetFailed {
+                    path: path.display().to_string(),
+                    reason: e.to_string(),
+                });
+            }
         }
     }
 
@@ -126,7 +134,20 @@ pub fn render_with_cache(
     let db_guard = font_db.fontdb();
     let pdf_bytes = pdf::write_pdf(&display_lists, &page_config, opts, Some(db_guard.db()))?;
 
-    Ok(pdf_bytes)
+    Ok(RenderResult {
+        pdf_bytes,
+        warnings,
+    })
+}
+
+/// Render HTML to PDF, reusing a cached FontDatabase for speed.
+pub fn render_with_cache(
+    html: &str,
+    opts: &RenderOptions,
+    font_db: &FontDatabase,
+) -> ferropdf_core::Result<Vec<u8>> {
+    let result = render_with_warnings(html, opts, font_db)?;
+    Ok(result.pdf_bytes)
 }
 
 /// Load font data from a @font-face src value.

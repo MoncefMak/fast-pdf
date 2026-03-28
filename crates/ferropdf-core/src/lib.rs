@@ -7,10 +7,14 @@ pub mod length;
 pub mod page;
 pub mod style;
 
+/// Maximum DOM nesting depth before recursive functions bail out.
+/// Prevents stack overflow from maliciously deep HTML documents.
+pub const MAX_DOM_DEPTH: usize = 256;
+
 // Re-exports publics
 pub use color::Color;
 pub use dom::{Document, Node, NodeId, NodeType};
-pub use error::{FerroError, Result};
+pub use error::{FerroError, RenderWarning, Result};
 pub use geometry::{Insets, Point, Rect, Size};
 pub use layout::{
     InlineSpan, LayoutBox, LayoutTree, ShapedGlyph, ShapedLine, ShapedSegment,

@@ -163,6 +163,41 @@ fn fragment_box(layout_box: &LayoutBox, ctx: &mut PaginationContext) {
         return;
     }
 
+    // ─── Rule 3a: Orphans/widows — text blocks near a page boundary ──────
+    // If a text block has shaped lines, check whether splitting would violate
+    // orphans (min lines on current page) or widows (min lines on next page).
+    // If so, push the entire block to the next page.
+    if !layout_box.shaped_lines.is_empty() && layout_box.children.is_empty() {
+        let total_lines = layout_box.shaped_lines.len();
+        let space_left = ctx.page_height - (layout_box.rect.y - ctx.page_y_offset);
+        let line_height = if total_lines > 0 {
+            box_height / total_lines as f32
+        } else {
+            box_height
+        };
+        let lines_that_fit = (space_left / line_height).floor() as usize;
+        let lines_on_next = total_lines.saturating_sub(lines_that_fit);
+
+        let orphans = style.orphans as usize;
+        let widows = style.widows as usize;
+
+        // Would violate orphans or widows → push entire block to next page
+        let violates_orphans = lines_that_fit > 0 && lines_that_fit < orphans;
+        let violates_widows = lines_on_next > 0 && lines_on_next < widows;
+        if total_lines > 1
+            && (violates_orphans || violates_widows)
+            && fits_on_new_page
+            && !ctx.is_current_page_empty()
+        {
+            ctx.flush_page(layout_box.rect.y);
+            place_box_on_current_page(layout_box, ctx);
+            if should_break_after(style) {
+                ctx.flush_page(layout_box.rect.y + layout_box.rect.height);
+            }
+            return;
+        }
+    }
+
     // ─── Rule 3b: Table rows are atomic — never split a row across pages ────
     let is_table_row = layout_box.style.display == Display::TableRow;
     if !fits_on_current_page && is_table_row && fits_on_new_page {
@@ -556,6 +591,121 @@ pub fn create_empty_page(_config: &PageConfig) -> Page {
         total_pages: 1,
         content: Vec::new(),
         margin_boxes: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ferropdf_core::{ComputedStyle, PageMargins, PageSize, Orientation};
+
+    fn make_config(page_height: f32) -> PageConfig {
+        PageConfig {
+            size: PageSize::Custom(595.0, page_height + 100.0), // +margins
+            margins: PageMargins {
+                top: 50.0,
+                right: 50.0,
+                bottom: 50.0,
+                left: 50.0,
+            },
+            orientation: Orientation::Portrait,
+        }
+    }
+
+    fn make_box(y: f32, height: f32) -> LayoutBox {
+        LayoutBox {
+            rect: Rect::new(0.0, y, 400.0, height),
+            content: Rect::new(0.0, y, 400.0, height),
+            style: ComputedStyle::default(),
+            ..Default::default()
+        }
+    }
+
+    fn make_root(children: Vec<LayoutBox>) -> LayoutBox {
+        let total_height = children.iter().map(|c| c.rect.y + c.rect.height).fold(0.0f32, f32::max);
+        LayoutBox {
+            rect: Rect::new(0.0, 0.0, 400.0, total_height),
+            content: Rect::new(0.0, 0.0, 400.0, total_height),
+            children,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn single_box_fits_one_page() {
+        let config = make_config(800.0);
+        let root = make_root(vec![make_box(0.0, 100.0)]);
+        let pages = paginate(&root, &config);
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].content.len(), 1);
+    }
+
+    #[test]
+    fn two_boxes_overflow_to_two_pages() {
+        let config = make_config(200.0);
+        let root = make_root(vec![
+            make_box(0.0, 150.0),
+            make_box(150.0, 150.0),
+        ]);
+        let pages = paginate(&root, &config);
+        assert_eq!(pages.len(), 2, "expected 2 pages, got {}", pages.len());
+    }
+
+    #[test]
+    fn page_break_before_forces_new_page() {
+        let config = make_config(800.0);
+        let mut box2 = make_box(100.0, 50.0);
+        box2.style.page_break_before = PageBreak::Always;
+        let root = make_root(vec![make_box(0.0, 100.0), box2]);
+        let pages = paginate(&root, &config);
+        assert_eq!(pages.len(), 2);
+    }
+
+    #[test]
+    fn page_break_after_forces_new_page() {
+        let config = make_config(800.0);
+        let mut box1 = make_box(0.0, 100.0);
+        box1.style.page_break_after = PageBreak::Always;
+        let root = make_root(vec![box1, make_box(100.0, 50.0)]);
+        let pages = paginate(&root, &config);
+        assert_eq!(pages.len(), 2);
+    }
+
+    #[test]
+    fn page_break_inside_avoid_pushes_to_next() {
+        let config = make_config(200.0);
+        // First box uses 150px, second box is 100px tall with avoid → doesn't fit,
+        // should be pushed to next page
+        let mut box2 = make_box(150.0, 100.0);
+        box2.style.page_break_inside = PageBreakInside::Avoid;
+        let root = make_root(vec![make_box(0.0, 150.0), box2]);
+        let pages = paginate(&root, &config);
+        assert_eq!(pages.len(), 2);
+    }
+
+    #[test]
+    fn empty_root_produces_one_page() {
+        let config = make_config(800.0);
+        let root = make_root(vec![]);
+        let pages = paginate(&root, &config);
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].page_number, 1);
+        assert_eq!(pages[0].total_pages, 1);
+    }
+
+    #[test]
+    fn total_pages_updated_correctly() {
+        let config = make_config(100.0);
+        let root = make_root(vec![
+            make_box(0.0, 80.0),
+            make_box(80.0, 80.0),
+            make_box(160.0, 80.0),
+        ]);
+        let pages = paginate(&root, &config);
+        assert!(pages.len() >= 2);
+        for page in &pages {
+            assert_eq!(page.total_pages, pages.len() as u32);
+        }
     }
 }
 

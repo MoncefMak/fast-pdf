@@ -109,6 +109,24 @@ fn build_taffy_tree(
     font_system: &mut FontSystem,
     available_width: f32,
 ) -> ferropdf_core::Result<()> {
+    build_taffy_tree_inner(doc, node_id, styles, taffy, node_map, table_cell_parent, font_system, available_width, 0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_taffy_tree_inner(
+    doc: &Document,
+    node_id: NodeId,
+    styles: &StyleTree,
+    taffy: &mut TaffyTree<TextContext>,
+    node_map: &mut HashMap<NodeId, taffy::NodeId>,
+    table_cell_parent: &mut HashMap<NodeId, NodeId>,
+    font_system: &mut FontSystem,
+    available_width: f32,
+    depth: usize,
+) -> ferropdf_core::Result<()> {
+    if depth > ferropdf_core::MAX_DOM_DEPTH {
+        return Ok(());
+    }
     let node = doc.get(node_id);
     let style = styles.get(&node_id).cloned().unwrap_or_default();
 
@@ -157,7 +175,7 @@ fn build_taffy_tree(
     let mut child_taffy_ids = Vec::new();
 
     for &child_id in &node.children {
-        build_taffy_tree(
+        build_taffy_tree_inner(
             doc,
             child_id,
             styles,
@@ -166,6 +184,7 @@ fn build_taffy_tree(
             table_cell_parent,
             font_system,
             available_width,
+            depth + 1,
         )?;
         if let Some(&tid) = node_map.get(&child_id) {
             child_taffy_ids.push(tid);
@@ -226,7 +245,7 @@ fn build_table_as_grid(
     let mut cell_taffy_ids = Vec::new();
     for row in &cell_rows {
         for cell in row {
-            build_taffy_tree(
+            build_taffy_tree_inner(
                 doc,
                 cell.node_id,
                 styles,
@@ -235,6 +254,7 @@ fn build_table_as_grid(
                 table_cell_parent,
                 font_system,
                 available_width,
+                1, // table cells are at depth 1 relative to the table
             )?;
             if let Some(&tid) = node_map.get(&cell.node_id) {
                 // Set grid-column span for cells with colspan > 1

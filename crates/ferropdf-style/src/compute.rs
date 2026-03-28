@@ -80,3 +80,105 @@ fn resolve_length_em_rem(length: &mut Length, font_size: f32, root_font_size: f3
         _ => {} // Pt, Percent, Auto, Zero, None — keep as is
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tag_defaults_bold() {
+        let mut style = ComputedStyle::default();
+        apply_tag_defaults(&mut style, Some("strong"));
+        assert_eq!(style.display, Display::Inline);
+        assert_eq!(style.font_weight, FontWeight::Bold);
+    }
+
+    #[test]
+    fn tag_defaults_italic() {
+        let mut style = ComputedStyle::default();
+        apply_tag_defaults(&mut style, Some("em"));
+        assert_eq!(style.display, Display::Inline);
+        assert_eq!(style.font_style, FontStyle::Italic);
+    }
+
+    #[test]
+    fn tag_defaults_link() {
+        let mut style = ComputedStyle::default();
+        apply_tag_defaults(&mut style, Some("a"));
+        assert_eq!(style.display, Display::Inline);
+        assert_eq!(style.text_decoration, style::TextDecoration::Underline);
+    }
+
+    #[test]
+    fn tag_defaults_span_inline() {
+        let mut style = ComputedStyle::default();
+        style.display = Display::Block;
+        apply_tag_defaults(&mut style, Some("span"));
+        assert_eq!(style.display, Display::Inline);
+    }
+
+    #[test]
+    fn resolve_units_em_margin() {
+        let mut style = ComputedStyle::default();
+        style.font_size = 16.0; // 16pt
+        style.margin = [Length::Em(2.0); 4];
+        resolve_units(&mut style, None, 12.0);
+        // 2em * 16pt = 32pt
+        assert_eq!(style.margin[0], Length::Pt(32.0));
+    }
+
+    #[test]
+    fn resolve_units_px_padding() {
+        let mut style = ComputedStyle::default();
+        style.font_size = 12.0;
+        style.padding = [Length::Px(20.0); 4];
+        resolve_units(&mut style, None, 12.0);
+        // 20px * 0.75 = 15pt
+        assert_eq!(style.padding[0], Length::Pt(15.0));
+    }
+
+    #[test]
+    fn resolve_units_preserves_percent() {
+        let mut style = ComputedStyle::default();
+        style.width = Length::Percent(50.0);
+        resolve_units(&mut style, None, 12.0);
+        assert_eq!(style.width, Length::Percent(50.0));
+    }
+
+    #[test]
+    fn resolve_units_preserves_auto() {
+        let mut style = ComputedStyle::default();
+        style.width = Length::Auto;
+        resolve_units(&mut style, None, 12.0);
+        assert_eq!(style.width, Length::Auto);
+    }
+
+    #[test]
+    fn resolve_units_fixes_stale_line_height() {
+        let mut style = ComputedStyle::default();
+        style.font_size = 24.0;
+        style.line_height = 14.4; // inherited from smaller parent
+        resolve_units(&mut style, None, 12.0);
+        // line_height < font_size → recalculated to 1.2 × font_size
+        assert!((style.line_height - 28.8).abs() < 0.01);
+    }
+
+    #[test]
+    fn resolve_length_em_rem_conversion() {
+        let mut l = Length::Em(2.0);
+        resolve_length_em_rem(&mut l, 16.0, 12.0);
+        assert_eq!(l, Length::Pt(32.0));
+
+        let mut l = Length::Rem(1.5);
+        resolve_length_em_rem(&mut l, 16.0, 12.0);
+        assert_eq!(l, Length::Pt(18.0));
+
+        let mut l = Length::Mm(10.0);
+        resolve_length_em_rem(&mut l, 16.0, 12.0);
+        if let Length::Pt(v) = l {
+            assert!((v - 28.346).abs() < 0.01);
+        } else {
+            panic!("expected Pt");
+        }
+    }
+}

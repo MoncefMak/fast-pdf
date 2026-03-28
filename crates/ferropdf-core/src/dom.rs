@@ -119,3 +119,68 @@ impl<'a> Iterator for PreorderIter<'a> {
         Some(id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn document_create_and_append() {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let div = doc.create_element("div", HashMap::new());
+        doc.append_child(root, div);
+
+        assert_eq!(doc.get(root).children.len(), 1);
+        assert_eq!(doc.get(div).parent, Some(root));
+        assert_eq!(doc.get(div).tag(), Some("div"));
+    }
+
+    #[test]
+    fn text_node() {
+        let mut doc = Document::new();
+        let text = doc.create_text("hello world");
+        assert!(doc.get(text).is_text());
+        assert_eq!(doc.get(text).text.as_deref(), Some("hello world"));
+    }
+
+    #[test]
+    fn element_attributes() {
+        let mut doc = Document::new();
+        let mut attrs = HashMap::new();
+        attrs.insert("class".to_string(), "header".to_string());
+        attrs.insert("id".to_string(), "main".to_string());
+        let elem = doc.create_element("div", attrs);
+
+        assert_eq!(doc.get(elem).attr("class"), Some("header"));
+        assert_eq!(doc.get(elem).attr("id"), Some("main"));
+        assert_eq!(doc.get(elem).attr("nonexistent"), None);
+    }
+
+    #[test]
+    fn preorder_traversal() {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let a = doc.create_element("a", HashMap::new());
+        let b = doc.create_element("b", HashMap::new());
+        let c = doc.create_element("c", HashMap::new());
+        doc.append_child(root, a);
+        doc.append_child(root, b);
+        doc.append_child(a, c);
+
+        let order: Vec<NodeId> = doc.iter_preorder(root).collect();
+        assert_eq!(order.len(), 4); // root, a, c, b
+        assert_eq!(order[0], root);
+        assert_eq!(order[1], a);
+        assert_eq!(order[2], c);
+        assert_eq!(order[3], b);
+    }
+
+    #[test]
+    fn tag_name_lowercased() {
+        let mut doc = Document::new();
+        let elem = doc.create_element("DIV", HashMap::new());
+        // create_element lowercases the tag
+        assert_eq!(doc.get(elem).tag(), Some("div"));
+    }
+}

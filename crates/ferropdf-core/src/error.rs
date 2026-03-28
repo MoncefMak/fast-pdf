@@ -21,3 +21,40 @@ pub enum FerroError {
 }
 
 pub type Result<T> = std::result::Result<T, FerroError>;
+
+/// A non-fatal warning collected during rendering.
+/// Returned alongside the PDF bytes so callers can diagnose issues
+/// (e.g. unsupported CSS properties, missing images, invalid selectors).
+#[derive(Debug, Clone)]
+pub enum RenderWarning {
+    /// A CSS property was parsed but is not rendered (e.g. position:absolute).
+    UnsupportedCss { property: String, value: String },
+    /// A CSS selector could not be parsed.
+    InvalidSelector(String),
+    /// An image could not be loaded.
+    ImageLoadFailed { src: String, reason: String },
+    /// An external stylesheet could not be loaded or parsed.
+    StylesheetFailed { path: String, reason: String },
+    /// A font could not be found for the requested family/weight/style.
+    FontNotFound { family: String, bold: bool, italic: bool },
+}
+
+impl std::fmt::Display for RenderWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RenderWarning::UnsupportedCss { property, value } => {
+                write!(f, "unsupported CSS: {}:{} (parsed but not rendered)", property, value)
+            }
+            RenderWarning::InvalidSelector(s) => write!(f, "invalid selector: {}", s),
+            RenderWarning::ImageLoadFailed { src, reason } => {
+                write!(f, "image load failed: {}: {}", src, reason)
+            }
+            RenderWarning::StylesheetFailed { path, reason } => {
+                write!(f, "stylesheet failed: {}: {}", path, reason)
+            }
+            RenderWarning::FontNotFound { family, bold, italic } => {
+                write!(f, "font not found: {} (bold={}, italic={})", family, bold, italic)
+            }
+        }
+    }
+}

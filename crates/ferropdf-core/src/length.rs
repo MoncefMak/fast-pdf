@@ -52,3 +52,54 @@ impl Length {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn px_to_pt() {
+        let result = Length::Px(16.0).to_pt(12.0, 12.0).unwrap();
+        assert!((result - 12.0).abs() < 0.01, "16px = 12pt, got {}", result);
+    }
+
+    #[test]
+    fn pt_identity() {
+        let result = Length::Pt(24.0).to_pt(12.0, 12.0).unwrap();
+        assert!((result - 24.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn mm_to_pt() {
+        let result = Length::Mm(25.4).to_pt(12.0, 12.0).unwrap();
+        // 25.4mm = 1 inch = 72pt
+        assert!((result - 72.0).abs() < 0.1, "25.4mm = 72pt, got {}", result);
+    }
+
+    #[test]
+    fn em_resolves_to_font_size() {
+        let result = Length::Em(2.0).to_pt(16.0, 12.0).unwrap();
+        assert!((result - 32.0).abs() < 0.01, "2em * 16pt = 32pt, got {}", result);
+    }
+
+    #[test]
+    fn rem_resolves_to_root_font_size() {
+        let result = Length::Rem(1.5).to_pt(24.0, 12.0).unwrap();
+        assert!((result - 18.0).abs() < 0.01, "1.5rem * 12pt = 18pt, got {}", result);
+    }
+
+    #[test]
+    fn auto_returns_none() {
+        assert!(Length::Auto.to_pt(12.0, 12.0).is_none());
+    }
+
+    #[test]
+    fn percent_returns_none() {
+        assert!(Length::Percent(50.0).to_pt(12.0, 12.0).is_none());
+    }
+
+    #[test]
+    fn zero_returns_zero() {
+        assert_eq!(Length::Zero.to_pt(12.0, 12.0), Some(0.0));
+    }
+}

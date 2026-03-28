@@ -50,11 +50,13 @@ pub fn resolve(
         None,
         root_font_size,
         &mut nth_cache,
+        0,
     );
 
     Ok(style_tree)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_recursive(
     doc: &Document,
     node_id: NodeId,
@@ -63,7 +65,13 @@ fn resolve_recursive(
     parent_style: Option<&ComputedStyle>,
     root_font_size: f32,
     nth_cache: &mut selectors::NthIndexCache,
+    depth: usize,
 ) {
+    if depth > ferropdf_core::MAX_DOM_DEPTH {
+        log::warn!("DOM depth limit ({}) exceeded, skipping subtree", ferropdf_core::MAX_DOM_DEPTH);
+        return;
+    }
+
     let node = doc.get(node_id);
 
     let mut style = match parent_style {
@@ -96,6 +104,6 @@ fn resolve_recursive(
     tree.insert(node_id, style.clone());
 
     for &child in &node.children {
-        resolve_recursive(doc, child, rules, tree, Some(&style), root_font_size, nth_cache);
+        resolve_recursive(doc, child, rules, tree, Some(&style), root_font_size, nth_cache, depth + 1);
     }
 }

@@ -15,7 +15,7 @@ pub fn paint_page(page: &Page, config: &PageConfig) -> PageDisplayList {
     let container_width = config.content_width_pt();
 
     for layout_box in &page.content {
-        paint_box(layout_box, &mut ops, offset_x, offset_y, container_width);
+        paint_box(layout_box, &mut ops, offset_x, offset_y, container_width, 0);
     }
 
     PageDisplayList {
@@ -31,11 +31,23 @@ fn paint_box(
     offset_x: f32,
     offset_y: f32,
     _parent_content_width: f32,
+    depth: usize,
 ) {
+    if depth > ferropdf_core::MAX_DOM_DEPTH {
+        return;
+    }
+
     let style = &layout_box.style;
 
     if !style.visibility {
         return;
+    }
+
+    // Opacity: wrap entire box output in Save/SetOpacity/Restore
+    let has_opacity = style.opacity < 1.0 - f32::EPSILON;
+    if has_opacity {
+        ops.push(DrawOp::Save);
+        ops.push(DrawOp::SetOpacity(style.opacity));
     }
 
     // Accumulate position:relative visual offset into effective offsets.
@@ -220,7 +232,11 @@ fn paint_box(
     // Children — propagate effective offset (includes ancestor relative shifts)
     let my_content_width = layout_box.content.width;
     for child in &layout_box.children {
-        paint_box(child, ops, eff_x, eff_y, my_content_width);
+        paint_box(child, ops, eff_x, eff_y, my_content_width, depth + 1);
+    }
+
+    if has_opacity {
+        ops.push(DrawOp::Restore);
     }
 }
 

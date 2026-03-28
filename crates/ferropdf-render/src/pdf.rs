@@ -181,6 +181,22 @@ pub fn write_pdf(
         });
     }
 
+    // ── Collect opacity ExtGState objects ──
+    // Scan display lists for SetOpacity ops and create one ExtGState per unique alpha.
+    let mut opacity_states: HashMap<u32, (Ref, String)> = HashMap::new(); // key = (alpha * 1000) as u32
+    let mut gs_counter = 0u32;
+    for display_list in pages {
+        for op in &display_list.ops {
+            if let DrawOp::SetOpacity(alpha) = op {
+                let key = (*alpha * 1000.0) as u32;
+                opacity_states.entry(key).or_insert_with(|| {
+                    gs_counter += 1;
+                    (next_ref(), format!("GS{}", gs_counter))
+                });
+            }
+        }
+    }
+
     // Collect page refs
     let mut page_refs = Vec::new();
     let mut content_refs = Vec::new();
@@ -256,6 +272,13 @@ pub fn write_pdf(
                 xobjects.pair(Name(img.pdf_name.as_bytes()), img.pdf_ref);
             }
             xobjects.finish();
+        }
+        if !opacity_states.is_empty() {
+            let mut ext_g_states = resources.ext_g_states();
+            for (gs_ref, gs_name) in opacity_states.values() {
+                ext_g_states.pair(Name(gs_name.as_bytes()), *gs_ref);
+            }
+            ext_g_states.finish();
         }
         resources.finish();
 
@@ -390,6 +413,12 @@ pub fn write_pdf(
 
                     content.end_text();
                 }
+                DrawOp::SetOpacity(alpha) => {
+                    let key = (*alpha * 1000.0) as u32;
+                    if let Some((_ref, gs_name)) = opacity_states.get(&key) {
+                        content.set_parameters(Name(gs_name.as_bytes()));
+                    }
+                }
                 DrawOp::Save => {
                     content.save_state();
                 }
@@ -442,6 +471,15 @@ pub fn write_pdf(
         xobj.color_space().device_rgb();
         xobj.bits_per_component(8);
         xobj.finish();
+    }
+
+    // Write ExtGState objects for opacity
+    for (&key, &(gs_ref, ref _gs_name)) in &opacity_states {
+        let alpha = key as f32 / 1000.0;
+        let mut gs = pdf.ext_graphics(gs_ref);
+        gs.non_stroking_alpha(alpha);
+        gs.stroking_alpha(alpha);
+        gs.finish();
     }
 
     // Write metadata

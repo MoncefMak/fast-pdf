@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774776196930,
+  "lastUpdate": 1774777191065,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -1447,6 +1447,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 4114719,
             "range": "± 31230",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "09f3cf11fd8fc5fc7995a331d4ed1c23d44b21a5",
+          "message": "perf: batch glyph rendering instead of per-glyph begin_text/end_text\n\nSort shaped glyphs by x position (visual order) and emit them in a\nsingle show() call per font run. Eliminates the per-glyph\nbegin_text/set_font/next_line/show/end_text overhead that caused\n4-13x performance regression on benchmarks.",
+          "timestamp": "2026-03-29T10:36:06+01:00",
+          "tree_id": "21346154d03bfc22abed306ec50c78f476e848af",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/09f3cf11fd8fc5fc7995a331d4ed1c23d44b21a5"
+        },
+        "date": 1774777190612,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 6693868,
+            "range": "± 111827",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 7559883,
+            "range": "± 81677",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 3286903,
+            "range": "± 35325",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 4113170,
+            "range": "± 49035",
             "unit": "ns/iter"
           }
         ]

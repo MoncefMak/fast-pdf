@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774735311605,
+  "lastUpdate": 1774775578596,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -1351,6 +1351,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 926790,
             "range": "± 3596",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "moncefmak@users.noreply.github.com",
+            "name": "Makti Moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "c7cb963a5a4921459c51e05df0308952ff89613e",
+          "message": "feat: resolve issues #4–#10 — Arabic shaping, box-shadow, position absolute, RTL, font-face\n\n## Issue #4 — Arabic text shaping (ligatures)\n## Issue #5 — Unicode Bidi (mixed Arabic/numbers)\n\nPropagate fontdb::ID from cosmic-text shaped glyphs through the entire\nrender pipeline to the PDF writer. This ensures the exact font binary\nused for shaping is embedded in the PDF (fixes glyph ID mismatch when\ncosmic-text falls back to a different font than the one resolved by\nname). Position glyphs individually using cosmic-text x coordinates\nfor correct RTL visual rendering.\n\n- Added fontdb dep to ferropdf-core; ShapedGlyph now carries font_id\n- DrawOp::DrawText carries full ShapedGlyph vec (not just glyph IDs)\n- PDF writer groups glyphs by font_id, embeds each font independently\n- Added CSS direction property, unicode-bidi, and HTML dir attribute\n- direction is inherited (added to inherit.rs)\n\n## Issue #6 — @font-face local file paths and data URIs\n\n- Strip file:// prefix from font src paths\n- Handle absolute paths directly (no base_url resolution needed)\n- Extract only first url() from multi-source @font-face src\n- Skip format() and other CSS functions in @font-face parsing\n\n## Issue #7 — position: absolute and position: fixed\n\n- No longer forces absolute/fixed to Static in cascade\n- Added CssProperty::Top/Right/Bottom/Left/ZIndex to CSS parser\n- Maps Position::Absolute/Fixed to taffy::Position::Absolute with inset\n- Sets out_of_flow=true for absolute/fixed LayoutBoxes\n- Added z_index field to ComputedStyle\n\n## Issue #8 — box-shadow CSS property\n\n- Added BoxShadow struct (offset_x, offset_y, blur, spread, color, inset)\n- CSS parser for box-shadow shorthand (comma-separated multiple shadows)\n- DrawOp::DrawBoxShadow emitted before background in painter\n- PDF rendering via layered semi-transparent rects (blur approximation)\n- Opacity ExtGState collection updated for shadow alpha values\n\n## Issue #9 — opacity (already implemented, no changes needed)\n\n## Issue #10 — text-align: center for inline-block children\n\n- When block container with all-inline children converts to flex-row,\n  text-align now maps to justify-content (center→Center, right→FlexEnd)\n\nCo-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-03-29T10:05:53+01:00",
+          "tree_id": "8035c109082f478555ded63a780171ca10c8598e",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/c7cb963a5a4921459c51e05df0308952ff89613e"
+        },
+        "date": 1774775578178,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 6660875,
+            "range": "± 48507",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 7513897,
+            "range": "± 39076",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 3251097,
+            "range": "± 22110",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 4089328,
+            "range": "± 13468",
             "unit": "ns/iter"
           }
         ]

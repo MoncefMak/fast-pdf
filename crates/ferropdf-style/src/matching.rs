@@ -524,3 +524,192 @@ pub fn match_node(
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ferropdf_core::{Document, NodeId};
+    use std::collections::HashMap;
+
+    fn elem(doc: &mut Document, parent: NodeId, tag: &str) -> NodeId {
+        let id = doc.create_element(tag, HashMap::new());
+        doc.append_child(parent, id);
+        id
+    }
+
+    fn elem_attr(doc: &mut Document, parent: NodeId, tag: &str, attr: &str, value: &str) -> NodeId {
+        let mut attrs = HashMap::new();
+        attrs.insert(attr.to_string(), value.to_string());
+        let id = doc.create_element(tag, attrs);
+        doc.append_child(parent, id);
+        id
+    }
+
+    /// Parse a single selector through FerroSelectorParser; useful to assert
+    /// that a syntax actually round-trips through our parser glue.
+    fn parses(selector: &str) -> bool {
+        let mut input = cssparser::ParserInput::new(selector);
+        let mut parser = cssparser::Parser::new(&mut input);
+        SelectorList::parse(&FerroSelectorParser, &mut parser, ParseRelative::No).is_ok()
+    }
+
+    fn matches_selector(doc: &Document, node: NodeId, selector: &str) -> bool {
+        let mut input = cssparser::ParserInput::new(selector);
+        let mut parser = cssparser::Parser::new(&mut input);
+        let list =
+            SelectorList::parse(&FerroSelectorParser, &mut parser, ParseRelative::No).unwrap();
+        let element = DomNode::new(doc, node);
+        let mut nth_cache = NthIndexCache::default();
+        list.0.iter().any(|s| {
+            let mut ctx = MatchingContext::new(
+                MatchingMode::Normal,
+                None,
+                &mut nth_cache,
+                QuirksMode::NoQuirks,
+                NeedsSelectorFlags::No,
+                IgnoreNthChildForInvalidation::No,
+            );
+            selectors::matching::matches_selector(s, 0, None, &element, &mut ctx)
+        })
+    }
+
+    fn three_li_doc() -> (Document, NodeId, NodeId, NodeId) {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let body = elem(&mut doc, root, "body");
+        let ul = elem(&mut doc, body, "ul");
+        let l1 = elem(&mut doc, ul, "li");
+        let l2 = elem(&mut doc, ul, "li");
+        let l3 = elem(&mut doc, ul, "li");
+        (doc, l1, l2, l3)
+    }
+
+    #[test]
+    fn type_selector_matches() {
+        let (doc, l1, _, _) = three_li_doc();
+        assert!(matches_selector(&doc, l1, "li"));
+        assert!(!matches_selector(&doc, l1, "div"));
+    }
+
+    #[test]
+    fn first_child_pseudo_matches_only_first() {
+        let (doc, l1, l2, l3) = three_li_doc();
+        assert!(matches_selector(&doc, l1, "li:first-child"));
+        assert!(!matches_selector(&doc, l2, "li:first-child"));
+        assert!(!matches_selector(&doc, l3, "li:first-child"));
+    }
+
+    #[test]
+    fn last_child_pseudo_matches_only_last() {
+        let (doc, l1, l2, l3) = three_li_doc();
+        assert!(!matches_selector(&doc, l1, "li:last-child"));
+        assert!(!matches_selector(&doc, l2, "li:last-child"));
+        assert!(matches_selector(&doc, l3, "li:last-child"));
+    }
+
+    #[test]
+    fn nth_child_index_parses() {
+        // Sanity: ensure :nth-child(...) variants survive the parser glue.
+        assert!(parses("li:nth-child(1)"));
+        assert!(parses("li:nth-child(odd)"));
+        assert!(parses("li:nth-child(2n)"));
+        assert!(parses("li:nth-child(2n+1)"));
+        assert!(parses("li:nth-of-type(odd)"));
+        assert!(parses("li:nth-last-child(1)"));
+    }
+
+    #[test]
+    fn nth_child_one_matches_first() {
+        let (doc, l1, l2, _) = three_li_doc();
+        assert!(matches_selector(&doc, l1, "li:nth-child(1)"));
+        assert!(!matches_selector(&doc, l2, "li:nth-child(1)"));
+    }
+
+    #[test]
+    fn nth_child_two_matches_second() {
+        let (doc, l1, l2, l3) = three_li_doc();
+        assert!(!matches_selector(&doc, l1, "li:nth-child(2)"));
+        assert!(matches_selector(&doc, l2, "li:nth-child(2)"));
+        assert!(!matches_selector(&doc, l3, "li:nth-child(2)"));
+    }
+
+    #[test]
+    fn nth_child_odd_matches_first_and_third() {
+        let (doc, l1, l2, l3) = three_li_doc();
+        assert!(matches_selector(&doc, l1, "li:nth-child(odd)"));
+        assert!(!matches_selector(&doc, l2, "li:nth-child(odd)"));
+        assert!(matches_selector(&doc, l3, "li:nth-child(odd)"));
+    }
+
+    #[test]
+    fn nth_child_even_matches_second() {
+        let (doc, l1, l2, l3) = three_li_doc();
+        assert!(!matches_selector(&doc, l1, "li:nth-child(even)"));
+        assert!(matches_selector(&doc, l2, "li:nth-child(even)"));
+        assert!(!matches_selector(&doc, l3, "li:nth-child(even)"));
+    }
+
+    #[test]
+    fn nth_child_2n_plus_1_matches_odd_positions() {
+        let (doc, l1, l2, l3) = three_li_doc();
+        assert!(matches_selector(&doc, l1, "li:nth-child(2n+1)"));
+        assert!(!matches_selector(&doc, l2, "li:nth-child(2n+1)"));
+        assert!(matches_selector(&doc, l3, "li:nth-child(2n+1)"));
+    }
+
+    #[test]
+    fn class_selector_matches() {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let body = elem(&mut doc, root, "body");
+        let p = elem_attr(&mut doc, body, "p", "class", "warning highlight");
+        assert!(matches_selector(&doc, p, "p.warning"));
+        assert!(matches_selector(&doc, p, ".highlight"));
+        assert!(!matches_selector(&doc, p, ".missing"));
+    }
+
+    #[test]
+    fn id_selector_matches() {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let body = elem(&mut doc, root, "body");
+        let p = elem_attr(&mut doc, body, "p", "id", "main");
+        assert!(matches_selector(&doc, p, "#main"));
+        assert!(!matches_selector(&doc, p, "#other"));
+    }
+
+    #[test]
+    fn descendant_combinator_matches() {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let body = elem(&mut doc, root, "body");
+        let div = elem(&mut doc, body, "div");
+        let span = elem(&mut doc, div, "span");
+        assert!(matches_selector(&doc, span, "div span"));
+        assert!(matches_selector(&doc, span, "body span"));
+        assert!(!matches_selector(&doc, div, "div span"));
+    }
+
+    #[test]
+    fn child_combinator_matches() {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let body = elem(&mut doc, root, "body");
+        let div = elem(&mut doc, body, "div");
+        let span = elem(&mut doc, div, "span");
+        assert!(matches_selector(&doc, span, "div > span"));
+        // body > span is false: span is a grandchild, not a direct child.
+        assert!(!matches_selector(&doc, span, "body > span"));
+    }
+
+    #[test]
+    fn attribute_selector_matches() {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let body = elem(&mut doc, root, "body");
+        let p = elem_attr(&mut doc, body, "p", "lang", "fr");
+        assert!(matches_selector(&doc, p, "p[lang]"));
+        assert!(matches_selector(&doc, p, "p[lang=\"fr\"]"));
+        assert!(!matches_selector(&doc, p, "p[lang=\"en\"]"));
+    }
+}

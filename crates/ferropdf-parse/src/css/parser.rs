@@ -408,23 +408,52 @@ fn parse_font_face_rule(parser: &mut Parser<'_, '_>) -> Option<FontFaceRule> {
 }
 
 fn parse_qualified_rule(parser: &mut Parser<'_, '_>) -> Option<StyleRule> {
-    // Collect selector tokens until we hit '{'
-    let mut selector_text = String::with_capacity(128);
-    let start = parser.state();
+    // Capture the original source slice between the start of the rule and the
+    // opening `{`. Reconstructing the selector token-by-token via
+    // `Token::to_css_string()` is unsafe for functional pseudo-classes:
+    // `Token::Function("nth-child")` only round-trips to `nth-child(` and the
+    // arguments inside the function block are skipped by
+    // `next_including_whitespace`, so we'd silently truncate
+    // `:nth-child(odd)` to `:nth-child(`. Slicing the source preserves
+    // every character (including arguments and the closing paren).
+    let saved = parser.state();
+    let selector_start = saved.position();
+    let selector_end;
 
     loop {
+        // Position *before* consuming the next token: after the loop breaks
+        // on `{`, this points one past the last selector character.
+        let pos_before = parser.position();
         match parser.next_including_whitespace() {
-            Ok(&Token::CurlyBracketBlock) => break,
-            Ok(token) => {
-                selector_text.push_str(&token.to_css_string());
+            Ok(&Token::CurlyBracketBlock) => {
+                selector_end = pos_before;
+                break;
             }
+            // Block-opener tokens (`:nth-child(`, `:not(`, `[lang]`,
+            // `(args)`) are yielded without their contents —
+            // `parser.position()` then points just after the open delimiter,
+            // and a subsequent `next` silently skips to the matching close
+            // PLUS the next top-level token in one go. That breaks
+            // position-based slicing because `pos_before` ends up inside the
+            // block. Explicitly enter the nested block so position advances
+            // past the close delimiter and `pos_before` of the next
+            // iteration is meaningful.
+            Ok(&Token::Function(_) | &Token::ParenthesisBlock | &Token::SquareBracketBlock) => {
+                let _ =
+                    parser.parse_nested_block(|p| -> Result<(), cssparser::ParseError<'_, ()>> {
+                        while p.next_including_whitespace_and_comments().is_ok() {}
+                        Ok(())
+                    });
+            }
+            Ok(_) => {}
             Err(_) => {
-                parser.reset(&start);
+                parser.reset(&saved);
                 return None;
             }
         }
     }
 
+    let selector_text = parser.slice(selector_start..selector_end);
     let selectors: Vec<String> = selector_text
         .split(',')
         .map(|s| s.trim().to_string())

@@ -103,12 +103,31 @@ pub fn render_with_warnings(
         }
     }
 
-    // 4. Build page config
-    let page_config = PageConfig {
+    // 4. Build page config — @page { margin / size } overrides Options
+    // when present (last @page rule wins, in source order across all sheets).
+    let mut page_config = PageConfig {
         size: PageSize::from_str(&opts.page_size),
         margins: PageMargins::from_css_str(&opts.margin),
         orientation: ferropdf_core::Orientation::Portrait,
     };
+    let mut last_page_size: Option<String> = None;
+    let mut last_page_margin: Option<String> = None;
+    for sheet in &stylesheets {
+        for pr in &sheet.page_rules {
+            if let Some(s) = &pr.size {
+                last_page_size = Some(s.clone());
+            }
+            if let Some(m) = &pr.margin {
+                last_page_margin = Some(m.clone());
+            }
+        }
+    }
+    if let Some(s) = last_page_size {
+        page_config.size = PageSize::from_str(&s);
+    }
+    if let Some(m) = last_page_margin {
+        page_config.margins = PageMargins::from_css_str(&m);
+    }
 
     // 5. Resolve styles (all values resolved to pt)
     let styles = ferropdf_style::resolve(

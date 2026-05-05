@@ -292,6 +292,15 @@ p { color: var(--missing, red); }
         pdf = render(html)
         assert count_color_op(pdf, 1, 0, 0) >= 1
 
+    def test_var_in_inline_style(self):
+        # var() should also work inside inline style attributes — they go
+        # through the same cascade pipeline.
+        html = """<html><head><style>
+:root { --c: red; }
+</style></head><body><p style="color: var(--c);">hi</p></body></html>"""
+        pdf = render(html)
+        assert count_color_op(pdf, 1, 0, 0) >= 1
+
     def test_descendant_overrides_inherited_var(self):
         html = """<html><head><style>
 body { --c: red; }
@@ -305,3 +314,89 @@ p { color: var(--c); }
         # First <p> uses red, second uses blue.
         assert count_color_op(pdf, 1, 0, 0) >= 1
         assert count_color_op(pdf, 0, 0, 1) >= 1
+
+
+# ---------------------------------------------------------------------------
+# @media print / @media screen — newly added in v0.3
+# ---------------------------------------------------------------------------
+
+
+class TestMediaQueries:
+    def test_media_print_rules_apply(self):
+        html = """<html><head><style>
+@media print { p { color: red; } }
+</style></head><body><p>hi</p></body></html>"""
+        pdf = render(html)
+        assert count_color_op(pdf, 1, 0, 0) >= 1
+
+    def test_media_screen_rules_skipped(self):
+        html = """<html><head><style>
+@media screen { p { color: red; } }
+</style></head><body><p>hi</p></body></html>"""
+        pdf = render(html)
+        # `screen` is irrelevant to PDF rendering — the rule must be ignored.
+        assert count_color_op(pdf, 1, 0, 0) == 0
+
+    def test_media_all_treated_as_print(self):
+        html = """<html><head><style>
+@media all { p { color: red; } }
+</style></head><body><p>hi</p></body></html>"""
+        pdf = render(html)
+        assert count_color_op(pdf, 1, 0, 0) >= 1
+
+    def test_media_min_width_query_skipped(self):
+        # We only flatten @media print/all today. Width-based queries are
+        # silently ignored — better than misbehaving with stale defaults.
+        html = """<html><head><style>
+@media (min-width: 800px) { p { color: red; } }
+</style></head><body><p>hi</p></body></html>"""
+        pdf = render(html)
+        assert count_color_op(pdf, 1, 0, 0) == 0
+
+
+# ---------------------------------------------------------------------------
+# @page { margin / size } — newly added in v0.3
+# ---------------------------------------------------------------------------
+
+
+class TestAtPage:
+    def _page_size(self, pdf: bytes) -> tuple[float, float]:
+        reader = pypdf.PdfReader(io.BytesIO(pdf))
+        box = reader.pages[0].mediabox
+        return float(box.width), float(box.height)
+
+    def test_at_page_size_overrides_options(self):
+        html = """<html><head><style>
+@page { size: A5; }
+</style></head><body><p>x</p></body></html>"""
+        pdf = render(html)  # default Options() asks for A4
+        w, h = self._page_size(pdf)
+        # A5 is roughly 419.5 × 595.3 pt — much smaller than A4.
+        assert 400 < w < 440
+        assert 580 < h < 610
+
+    def test_at_page_custom_size_in_mm(self):
+        html = """<html><head><style>
+@page { size: 100mm 150mm; }
+</style></head><body><p>x</p></body></html>"""
+        pdf = render(html)
+        w, h = self._page_size(pdf)
+        # 100mm ≈ 283.5 pt, 150mm ≈ 425.2 pt.
+        assert abs(w - 283.5) < 1
+        assert abs(h - 425.2) < 1
+
+    def test_at_page_margin_takes_effect(self):
+        # A render with a 60mm margin should be visibly smaller in
+        # available content area than a 5mm margin (less text per page,
+        # so more pages or shorter content stream).
+        small_margin = render(
+            """<html><head><style>@page { margin: 5mm; }</style></head>
+<body>""" + ("<p>line</p>" * 30) + """</body></html>"""
+        )
+        large_margin = render(
+            """<html><head><style>@page { margin: 60mm; }</style></head>
+<body>""" + ("<p>line</p>" * 30) + """</body></html>"""
+        )
+        small_pages = len(pypdf.PdfReader(io.BytesIO(small_margin)).pages)
+        large_pages = len(pypdf.PdfReader(io.BytesIO(large_margin)).pages)
+        assert large_pages > small_pages

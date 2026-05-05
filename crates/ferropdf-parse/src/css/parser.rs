@@ -1,10 +1,25 @@
 use cssparser::{ParseError, Parser, ParserInput, Token};
 
 /// A parsed CSS stylesheet
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Stylesheet {
     pub rules: Vec<StyleRule>,
     pub font_faces: Vec<FontFaceRule>,
+    /// `@page { margin: ...; size: ... }` rules. Multiple `@page` rules
+    /// override each other in source order; the last one wins. Only the
+    /// barebones margin/size pair is captured today — `@page :first` and
+    /// margin boxes (`@top-left { content: ... }`) are out of scope.
+    pub page_rules: Vec<PageRule>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PageRule {
+    /// Raw value of the `margin` declaration (`"2cm"`, `"10mm 15mm"`, …),
+    /// to be parsed by `PageMargins::from_css_str` downstream.
+    pub margin: Option<String>,
+    /// Raw value of the `size` declaration (`"A4"`, `"210mm 297mm"`, …),
+    /// to be parsed by `PageSize::from_str` downstream.
+    pub size: Option<String>,
 }
 
 /// A parsed @font-face rule
@@ -240,6 +255,7 @@ pub fn parse_stylesheet(css: &str) -> ferropdf_core::Result<Stylesheet> {
     let mut parser = Parser::new(&mut input);
     let mut rules = Vec::new();
     let mut font_faces = Vec::new();
+    let mut page_rules: Vec<PageRule> = Vec::new();
 
     while !parser.is_exhausted() {
         // Skip whitespace and comments
@@ -260,6 +276,18 @@ pub fn parse_stylesheet(css: &str) -> ferropdf_core::Result<Stylesheet> {
                 if let Some(ff) = parse_font_face_rule(&mut parser) {
                     font_faces.push(ff);
                 }
+            } else if name_lower == "media" {
+                // Inline the rules of `@media print` queries as if they were
+                // top-level — PDF rendering treats `print` as always active.
+                // Other media types (`screen`, `(min-width: 800px)`, …) are
+                // not relevant to a printed document and are skipped.
+                let (extra_rules, extra_font_faces) = parse_media_at_rule(&mut parser);
+                rules.extend(extra_rules);
+                font_faces.extend(extra_font_faces);
+            } else if name_lower == "page" {
+                if let Some(pr) = parse_page_rule(&mut parser) {
+                    page_rules.push(pr);
+                }
             } else {
                 let _ = skip_at_rule(&mut parser);
             }
@@ -277,7 +305,11 @@ pub fn parse_stylesheet(css: &str) -> ferropdf_core::Result<Stylesheet> {
         }
     }
 
-    Ok(Stylesheet { rules, font_faces })
+    Ok(Stylesheet {
+        rules,
+        font_faces,
+        page_rules,
+    })
 }
 
 fn skip_at_rule(parser: &mut Parser<'_, '_>) -> Result<(), ()> {
@@ -295,6 +327,115 @@ fn skip_at_rule(parser: &mut Parser<'_, '_>) -> Result<(), ()> {
             _ => {}
         }
     }
+}
+
+/// Parse a barebones `@page { margin: ...; size: ...; }` at-rule. The
+/// `@page` keyword has already been consumed. We skip any prelude (e.g.
+/// `:first`, `:left`) and read declarations from the curly block. Only
+/// `margin` and `size` are recognised — every other property is ignored.
+fn parse_page_rule(parser: &mut Parser<'_, '_>) -> Option<PageRule> {
+    // Skip any prelude tokens until we hit the curly block.
+    loop {
+        match parser.next_including_whitespace() {
+            Ok(&Token::CurlyBracketBlock) => break,
+            Ok(_) => {}
+            Err(_) => return None,
+        }
+    }
+    let mut rule = PageRule::default();
+    let _ = parser.parse_nested_block(|p| -> Result<(), ParseError<'_, ()>> {
+        while !p.is_exhausted() {
+            if let Some(decl) = parse_declaration(p) {
+                let raw_value = decl.value.to_cow().trim().to_string();
+                if let CssProperty::Margin = decl.property {
+                    rule.margin = Some(raw_value);
+                } else if let CssProperty::Unknown(name) = &decl.property {
+                    if name.eq_ignore_ascii_case("size") {
+                        rule.size = Some(raw_value);
+                    }
+                }
+            } else {
+                let _ = p.next();
+            }
+        }
+        Ok(())
+    });
+    Some(rule)
+}
+
+/// Parse a complete `@media ... { ... }` at-rule. The `@media` keyword
+/// has already been consumed by the caller. Walks the prelude looking
+/// for `print` (or `all`); if found, descends into the curly block and
+/// parses its contents as if they were top-level rules. Otherwise the
+/// block is consumed and discarded.
+fn parse_media_at_rule(parser: &mut Parser<'_, '_>) -> (Vec<StyleRule>, Vec<FontFaceRule>) {
+    let mut should_inline = false;
+
+    // Walk prelude tokens until we encounter the `{...}` block. cssparser
+    // yields `Token::CurlyBracketBlock` without entering it; the next call
+    // to `parse_nested_block` consumes its contents.
+    loop {
+        match parser.next_including_whitespace() {
+            Ok(&Token::CurlyBracketBlock) => break,
+            Ok(Token::Ident(name)) => {
+                if name.eq_ignore_ascii_case("print") || name.eq_ignore_ascii_case("all") {
+                    should_inline = true;
+                }
+            }
+            // `screen`, comma-separated lists, `(min-width: ...)`, etc. —
+            // ignored. We only flatten when we positively saw `print`/`all`.
+            Ok(_) => {}
+            Err(_) => return (Vec::new(), Vec::new()),
+        }
+    }
+
+    if !should_inline {
+        // We've already consumed the `{`; drain its contents and discard.
+        let _ = parser.parse_nested_block(|p| -> Result<(), ParseError<'_, ()>> {
+            while p.next().is_ok() {}
+            Ok(())
+        });
+        return (Vec::new(), Vec::new());
+    }
+
+    parser
+        .parse_nested_block(
+            |p| -> Result<(Vec<StyleRule>, Vec<FontFaceRule>), ParseError<'_, ()>> {
+                let mut rules = Vec::new();
+                let mut font_faces = Vec::new();
+                while !p.is_exhausted() {
+                    let _ = p.try_parse(|q| -> Result<(), ParseError<'_, ()>> {
+                        q.expect_whitespace()?;
+                        Ok(())
+                    });
+                    if p.is_exhausted() {
+                        break;
+                    }
+                    let start = p.state();
+                    if let Ok(Token::AtKeyword(ref name)) = p.next() {
+                        let name_lower = name.to_lowercase();
+                        if name_lower == "font-face" {
+                            if let Some(ff) = parse_font_face_rule(p) {
+                                font_faces.push(ff);
+                            }
+                        } else {
+                            // Nested @media is not flattened — out of scope.
+                            let _ = skip_at_rule(p);
+                        }
+                        continue;
+                    }
+                    p.reset(&start);
+                    match parse_qualified_rule(p) {
+                        Some(rule) => rules.push(rule),
+                        None => {
+                            let _ = p.next();
+                        }
+                    }
+                }
+                Ok((rules, font_faces))
+            },
+        )
+        .unwrap_or_default()
 }
 
 /// Parse @font-face { font-family: ...; src: url(...); font-weight: ...; font-style: ...; }

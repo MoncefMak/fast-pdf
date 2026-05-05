@@ -489,3 +489,126 @@ fn resolve_px(length: &Length) -> f32 {
         _ => 0.0,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ferropdf_core::{ComputedStyle, Document};
+    use std::collections::HashMap;
+
+    fn elem(doc: &mut Document, parent: NodeId, tag: &str) -> NodeId {
+        let id = doc.create_element(tag, HashMap::new());
+        doc.append_child(parent, id);
+        id
+    }
+
+    fn elem_attr(doc: &mut Document, parent: NodeId, tag: &str, key: &str, val: &str) -> NodeId {
+        let mut attrs = HashMap::new();
+        attrs.insert(key.to_string(), val.to_string());
+        let id = doc.create_element(tag, attrs);
+        doc.append_child(parent, id);
+        id
+    }
+
+    /// Apply the same default `display` values that compute.rs::apply_tag_defaults
+    /// would set in the real pipeline so the table-helper functions can find
+    /// rows/cells.
+    fn apply_table_display_defaults(doc: &Document, styles: &mut StyleTree) {
+        for (id, node) in doc.nodes.iter() {
+            let tag = node.tag_name.as_deref().unwrap_or("");
+            let display = match tag {
+                "table" => FDisplay::Table,
+                "thead" => FDisplay::TableHeaderGroup,
+                "tbody" => FDisplay::TableRowGroup,
+                "tfoot" => FDisplay::TableFooterGroup,
+                "tr" => FDisplay::TableRow,
+                "td" | "th" => FDisplay::TableCell,
+                _ => FDisplay::Block,
+            };
+            let mut style = ComputedStyle::default();
+            style.display = display;
+            styles.insert(id, style);
+        }
+    }
+
+    /// `<table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table>`
+    fn build_2x2_table() -> (Document, NodeId, StyleTree) {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let body = elem(&mut doc, root, "body");
+        let table = elem(&mut doc, body, "table");
+        let tbody = elem(&mut doc, table, "tbody");
+        let r1 = elem(&mut doc, tbody, "tr");
+        let r2 = elem(&mut doc, tbody, "tr");
+        let _ = elem(&mut doc, r1, "td");
+        let _ = elem(&mut doc, r1, "td");
+        let _ = elem(&mut doc, r2, "td");
+        let _ = elem(&mut doc, r2, "td");
+        let mut styles = StyleTree::new();
+        apply_table_display_defaults(&doc, &mut styles);
+        (doc, table, styles)
+    }
+
+    #[test]
+    fn collect_rows_descends_through_tbody() {
+        let (doc, table, styles) = build_2x2_table();
+        let rows = collect_table_rows(&doc, table, &styles);
+        assert_eq!(rows.len(), 2, "two <tr> rows must be discovered");
+        for row in &rows {
+            assert_eq!(row.len(), 2, "each row has two cells");
+        }
+    }
+
+    #[test]
+    fn cell_infos_default_colspan_is_one() {
+        let (doc, table, styles) = build_2x2_table();
+        let infos = collect_table_cell_infos(&doc, table, &styles);
+        for row in infos {
+            for cell in row {
+                assert_eq!(cell.colspan, 1, "no colspan attribute → colspan=1");
+            }
+        }
+    }
+
+    #[test]
+    fn cell_infos_respect_colspan_attribute() {
+        let mut doc = Document::new();
+        let root = doc.create_document_root();
+        let body = elem(&mut doc, root, "body");
+        let table = elem(&mut doc, body, "table");
+        let tbody = elem(&mut doc, table, "tbody");
+        let r1 = elem(&mut doc, tbody, "tr");
+        let _ = elem_attr(&mut doc, r1, "td", "colspan", "2");
+        let _ = elem(&mut doc, r1, "td");
+        let mut styles = StyleTree::new();
+        apply_table_display_defaults(&doc, &mut styles);
+        let infos = collect_table_cell_infos(&doc, table, &styles);
+        assert_eq!(infos.len(), 1);
+        assert_eq!(infos[0].len(), 2);
+        assert_eq!(infos[0][0].colspan, 2);
+        assert_eq!(infos[0][1].colspan, 1);
+    }
+
+    #[test]
+    fn taffy_column_tracks_have_fixed_min_max() {
+        let widths = [50.0, 100.0, 200.0];
+        let tracks = build_taffy_column_tracks(&widths);
+        assert_eq!(tracks.len(), 3);
+    }
+
+    #[test]
+    fn taffy_row_tracks_emit_one_per_row() {
+        let heights = [20.0, 30.0, 40.0, 50.0];
+        let tracks = build_taffy_row_tracks(&heights);
+        assert_eq!(tracks.len(), 4);
+    }
+
+    #[test]
+    fn resolve_px_handles_known_units() {
+        assert_eq!(resolve_px(&Length::Pt(12.0)), 12.0);
+        assert_eq!(resolve_px(&Length::Px(24.0)), 24.0);
+        assert_eq!(resolve_px(&Length::Zero), 0.0);
+        // Em / Rem / Percent / Auto fall back to 0 (resolved upstream).
+        assert_eq!(resolve_px(&Length::Auto), 0.0);
+    }
+}

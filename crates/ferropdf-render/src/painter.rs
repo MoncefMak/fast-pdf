@@ -393,3 +393,90 @@ fn to_roman(mut n: usize) -> String {
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_marker_disc_circle_square() {
+        assert_eq!(format_list_marker(&ListStyleType::Disc, 1), "\u{2022}");
+        assert_eq!(format_list_marker(&ListStyleType::Circle, 1), "\u{25E6}");
+        assert_eq!(format_list_marker(&ListStyleType::Square, 1), "\u{25AA}");
+    }
+
+    #[test]
+    fn list_marker_decimal() {
+        assert_eq!(format_list_marker(&ListStyleType::Decimal, 1), "1.");
+        assert_eq!(format_list_marker(&ListStyleType::Decimal, 12), "12.");
+    }
+
+    #[test]
+    fn list_marker_decimal_leading_zero() {
+        assert_eq!(
+            format_list_marker(&ListStyleType::DecimalLeadingZero, 1),
+            "01."
+        );
+        assert_eq!(
+            format_list_marker(&ListStyleType::DecimalLeadingZero, 7),
+            "07."
+        );
+        // {:02} doesn't truncate — values >= 10 stay as-is.
+        assert_eq!(
+            format_list_marker(&ListStyleType::DecimalLeadingZero, 42),
+            "42."
+        );
+    }
+
+    #[test]
+    fn list_marker_lower_alpha_wraps_after_z() {
+        assert_eq!(format_list_marker(&ListStyleType::LowerAlpha, 1), "a.");
+        assert_eq!(format_list_marker(&ListStyleType::LowerAlpha, 26), "z.");
+        // 27 wraps back to 'a'.
+        assert_eq!(format_list_marker(&ListStyleType::LowerAlpha, 27), "a.");
+    }
+
+    #[test]
+    fn list_marker_upper_alpha_wraps_after_z() {
+        assert_eq!(format_list_marker(&ListStyleType::UpperAlpha, 1), "A.");
+        assert_eq!(format_list_marker(&ListStyleType::UpperAlpha, 26), "Z.");
+        assert_eq!(format_list_marker(&ListStyleType::UpperAlpha, 27), "A.");
+    }
+
+    #[test]
+    fn list_marker_none_yields_empty_string() {
+        assert_eq!(format_list_marker(&ListStyleType::None, 1), "");
+    }
+
+    #[test]
+    fn list_marker_roman_lower() {
+        assert_eq!(format_list_marker(&ListStyleType::LowerRoman, 1), "i.");
+        assert_eq!(format_list_marker(&ListStyleType::LowerRoman, 4), "iv.");
+        assert_eq!(format_list_marker(&ListStyleType::LowerRoman, 9), "ix.");
+        assert_eq!(format_list_marker(&ListStyleType::LowerRoman, 40), "xl.");
+        assert_eq!(format_list_marker(&ListStyleType::LowerRoman, 90), "xc.");
+    }
+
+    #[test]
+    fn list_marker_roman_upper() {
+        assert_eq!(format_list_marker(&ListStyleType::UpperRoman, 1), "I.");
+        assert_eq!(format_list_marker(&ListStyleType::UpperRoman, 49), "XLIX.");
+        assert_eq!(
+            format_list_marker(&ListStyleType::UpperRoman, 1994),
+            "MCMXCIV."
+        );
+    }
+
+    #[test]
+    fn to_roman_known_values() {
+        assert_eq!(to_roman(1), "I");
+        assert_eq!(to_roman(4), "IV");
+        assert_eq!(to_roman(9), "IX");
+        assert_eq!(to_roman(40), "XL");
+        assert_eq!(to_roman(90), "XC");
+        assert_eq!(to_roman(400), "CD");
+        assert_eq!(to_roman(900), "CM");
+        assert_eq!(to_roman(1994), "MCMXCIV");
+        assert_eq!(to_roman(3999), "MMMCMXCIX");
+    }
+}

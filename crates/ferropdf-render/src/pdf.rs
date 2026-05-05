@@ -713,3 +713,89 @@ fn load_image(src: &str, base_url: Option<&str>) -> Result<(Vec<u8>, u32, u32), 
     let (w, h) = rgb.dimensions();
     Ok((rgb.into_raw(), w, h))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 1×1 transparent PNG, base64.
+    const ONE_PX_PNG_B64: &str =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    #[test]
+    fn load_image_decodes_data_uri() {
+        let src = format!("data:image/png;base64,{}", ONE_PX_PNG_B64);
+        let (rgb, w, h) = load_image(&src, None).expect("data URI should decode");
+        assert_eq!((w, h), (1, 1));
+        assert_eq!(rgb.len(), 3); // 1 pixel × 3 bytes RGB
+    }
+
+    #[test]
+    fn load_image_rejects_local_path_without_base_url() {
+        // Even if the file is real, no base_url means the sandbox refuses it.
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("logo.png");
+        std::fs::write(
+            &png,
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, ONE_PX_PNG_B64)
+                .unwrap(),
+        )
+        .unwrap();
+        let err = load_image(png.to_str().unwrap(), None).unwrap_err();
+        assert!(err.contains("base_url"), "got {}", err);
+    }
+
+    #[test]
+    fn load_image_loads_relative_path_under_base_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let png_bytes =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, ONE_PX_PNG_B64)
+                .unwrap();
+        std::fs::write(dir.path().join("logo.png"), &png_bytes).unwrap();
+        let (_rgb, w, h) =
+            load_image("logo.png", Some(dir.path().to_str().unwrap())).expect("should load");
+        assert_eq!((w, h), (1, 1));
+    }
+
+    #[test]
+    fn load_image_rejects_invalid_data_uri() {
+        let err = load_image("data:image/png;base64,$$$invalid$$$", None).unwrap_err();
+        assert!(
+            err.contains("base64") || err.contains("decode"),
+            "got {}",
+            err
+        );
+    }
+
+    #[test]
+    fn load_image_rejects_data_uri_without_comma() {
+        let err = load_image("data:malformed", None).unwrap_err();
+        assert!(err.contains("comma"), "got {}", err);
+    }
+
+    #[test]
+    fn load_image_rejects_unparseable_bytes() {
+        // Valid base64 but the decoded payload is not a recognized image.
+        let src = "data:image/png;base64,SGVsbG8gd29ybGQ="; // "Hello world"
+        let err = load_image(src, None).unwrap_err();
+        assert!(
+            err.contains("decode") || err.contains("Format"),
+            "got {}",
+            err
+        );
+    }
+
+    #[test]
+    fn load_image_rejects_http_urls() {
+        let err = load_image("http://example.com/x.png", None).unwrap_err();
+        assert!(err.contains("HTTP") || err.contains("http"), "got {}", err);
+    }
+
+    #[test]
+    fn y_to_pdf_inverts_y_axis() {
+        // HTML's top-down y becomes PDF's bottom-up y.
+        assert_eq!(y_to_pdf(0.0, 800.0), 800.0);
+        assert_eq!(y_to_pdf(800.0, 800.0), 0.0);
+        assert_eq!(y_to_pdf(100.0, 800.0), 700.0);
+    }
+}

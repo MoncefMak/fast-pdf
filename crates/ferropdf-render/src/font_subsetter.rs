@@ -429,3 +429,79 @@ fn unicode_to_winansi(c: char) -> u8 {
         _ => b'?',
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn winansi_passes_ascii_through() {
+        let bytes = encode_winansi("Hello, World!");
+        assert_eq!(bytes, b"Hello, World!");
+    }
+
+    #[test]
+    fn winansi_handles_latin1_supplement() {
+        // U+00E9 (é) → 0xE9 in WinANSI
+        let bytes = encode_winansi("café");
+        assert_eq!(bytes, vec![b'c', b'a', b'f', 0xE9]);
+    }
+
+    #[test]
+    fn winansi_maps_special_punctuation() {
+        // U+2014 (em dash) → 0x97
+        let bytes = encode_winansi("a—b");
+        assert_eq!(bytes, vec![b'a', 0x97, b'b']);
+    }
+
+    #[test]
+    fn winansi_maps_euro_sign() {
+        let bytes = encode_winansi("10€");
+        assert_eq!(bytes, vec![b'1', b'0', 0x80]);
+    }
+
+    #[test]
+    fn winansi_falls_back_to_question_mark_for_unmapped() {
+        // CJK characters have no WinANSI mapping.
+        let bytes = encode_winansi("漢字");
+        assert_eq!(bytes, vec![b'?', b'?']);
+    }
+
+    #[test]
+    fn encode_shaped_glyphs_emits_big_endian_u16() {
+        let gids = [0x0001u16, 0x0102, 0xFFFF];
+        let bytes = encode_shaped_glyphs(&gids, None);
+        assert_eq!(bytes, vec![0x00, 0x01, 0x01, 0x02, 0xFF, 0xFF]);
+    }
+
+    #[test]
+    fn encode_shaped_glyphs_applies_remapping() {
+        let gids = [42u16, 7, 1000];
+        let mut map = HashMap::new();
+        map.insert(42u16, 1u16);
+        map.insert(7u16, 2u16);
+        // 1000 is not in the map → falls back to 0 (notdef glyph).
+        let bytes = encode_shaped_glyphs(&gids, Some(&map));
+        assert_eq!(bytes, vec![0x00, 0x01, 0x00, 0x02, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn sanitize_ps_name_strips_disallowed_chars() {
+        // Spaces and other special characters must be removed; alphanumerics,
+        // `-`, and `+` survive (PostScript name rules).
+        assert_eq!(sanitize_ps_name("Helvetica Neue"), "HelveticaNeue");
+        assert_eq!(sanitize_ps_name("Noto-Sans+CJK"), "Noto-Sans+CJK");
+        assert_eq!(sanitize_ps_name("DejaVu Sans Mono"), "DejaVuSansMono");
+        assert_eq!(sanitize_ps_name("Bad/Name?"), "BadName");
+    }
+
+    #[test]
+    fn subset_font_falls_back_on_garbage_input() {
+        let used: std::collections::HashSet<u16> = [1u16, 2, 3].into_iter().collect();
+        let (data, mapping) = subset_font(b"not a real font", &used);
+        // On parse failure subsetter returns the original bytes unchanged
+        // and signals "no remapping" via None.
+        assert_eq!(data, b"not a real font");
+        assert!(mapping.is_none());
+    }
+}

@@ -345,6 +345,11 @@ pub struct ComputedStyle {
     pub box_decoration_break: BoxDecorationBreak,
     pub orphans: u32,
     pub widows: u32,
+
+    /// CSS custom properties (`--name: value`) declared on or inherited
+    /// by this element. Used to substitute `var(--name)` references in
+    /// other declarations during cascade application.
+    pub custom_properties: std::collections::HashMap<String, String>,
 }
 
 impl Default for ComputedStyle {
@@ -402,6 +407,7 @@ impl Default for ComputedStyle {
             box_decoration_break: BoxDecorationBreak::Slice,
             orphans: 2,
             widows: 2,
+            custom_properties: std::collections::HashMap::new(),
         }
     }
 }

@@ -18,6 +18,9 @@ pub fn inherit_from(parent: &ComputedStyle) -> ComputedStyle {
         widows: parent.widows,
         border_collapse: parent.border_collapse.clone(),
         list_style_type: parent.list_style_type.clone(),
+        // CSS custom properties inherit unconditionally per the
+        // CSS Custom Properties spec (§2.1).
+        custom_properties: parent.custom_properties.clone(),
         ..Default::default()
     }
 }

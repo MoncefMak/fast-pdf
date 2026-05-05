@@ -252,3 +252,56 @@ li:not(.hide){color:red;}
         pdf = render(html)
         # Two matching <li> × 2 ops each = 4.
         assert count_color_op(pdf, 1, 0, 0) == 4
+
+
+# ---------------------------------------------------------------------------
+# CSS custom properties (var(--x)) — newly added in v0.3
+# ---------------------------------------------------------------------------
+
+
+class TestCustomProperties:
+    def test_simple_var_substitution(self):
+        html = """<html><head><style>
+:root { --primary: red; }
+p { color: var(--primary); }
+</style></head><body><p>hi</p></body></html>"""
+        pdf = render(html)
+        assert count_color_op(pdf, 1, 0, 0) >= 1
+
+    def test_var_with_hex_value(self):
+        html = """<html><head><style>
+:root { --c: #00ff00; }
+p { color: var(--c); }
+</style></head><body><p>hi</p></body></html>"""
+        pdf = render(html)
+        assert count_color_op(pdf, 0, 1, 0) >= 1
+
+    def test_custom_property_inherits_to_descendants(self):
+        # --bg defined on body, used on a deeply nested <p>.
+        html = """<html><head><style>
+body { --bg: blue; }
+p { color: var(--bg); }
+</style></head><body><div><section><p>nested</p></section></div></body></html>"""
+        pdf = render(html)
+        assert count_color_op(pdf, 0, 0, 1) >= 1
+
+    def test_var_fallback_when_undefined(self):
+        html = """<html><head><style>
+p { color: var(--missing, red); }
+</style></head><body><p>fallback</p></body></html>"""
+        pdf = render(html)
+        assert count_color_op(pdf, 1, 0, 0) >= 1
+
+    def test_descendant_overrides_inherited_var(self):
+        html = """<html><head><style>
+body { --c: red; }
+.zone { --c: blue; }
+p { color: var(--c); }
+</style></head><body>
+<p>first</p>
+<div class="zone"><p>second</p></div>
+</body></html>"""
+        pdf = render(html)
+        # First <p> uses red, second uses blue.
+        assert count_color_op(pdf, 1, 0, 0) >= 1
+        assert count_color_op(pdf, 0, 0, 1) >= 1

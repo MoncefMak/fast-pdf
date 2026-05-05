@@ -495,27 +495,49 @@ fn parse_declaration(parser: &mut Parser<'_, '_>) -> Option<Declaration> {
     let name = parser.expect_ident().ok()?.to_string();
     parser.expect_colon().ok()?;
 
-    let mut value_tokens = Vec::new();
+    // Slice the raw value text from the source so that block-opening
+    // tokens (`var(--x)`, `rgb(...)`, `calc(...)`) round-trip correctly.
+    // Token::to_css_string for a Function only returns `name(` and a
+    // follow-up `next` call silently skips the function block, so a
+    // token-by-token reconstruction would truncate `var(--primary)`
+    // to `var(`.
+    let value_start = parser.position();
+    let mut value_end = value_start;
     let mut important = false;
 
     loop {
+        let pos_before = parser.position();
         match parser.next_including_whitespace() {
-            Ok(&Token::Semicolon) => break,
+            Ok(&Token::Semicolon) => {
+                value_end = pos_before;
+                break;
+            }
             Ok(&Token::Delim('!')) => {
                 if let Ok(kw) = parser.expect_ident() {
                     if kw.eq_ignore_ascii_case("important") {
                         important = true;
+                        value_end = pos_before;
                     }
                 }
             }
-            Ok(token) => {
-                value_tokens.push(token.to_css_string());
+            Ok(&Token::Function(_) | &Token::ParenthesisBlock | &Token::SquareBracketBlock) => {
+                // Drain the nested block so position() advances past the
+                // closing delimiter.
+                let _ =
+                    parser.parse_nested_block(|p| -> Result<(), cssparser::ParseError<'_, ()>> {
+                        while p.next_including_whitespace_and_comments().is_ok() {}
+                        Ok(())
+                    });
+                value_end = parser.position();
+            }
+            Ok(_) => {
+                value_end = parser.position();
             }
             Err(_) => break,
         }
     }
 
-    let raw_value = value_tokens.join("").trim().to_string();
+    let raw_value = parser.slice(value_start..value_end).trim().to_string();
     if raw_value.is_empty() {
         return None;
     }

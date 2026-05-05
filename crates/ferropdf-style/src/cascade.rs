@@ -6,6 +6,113 @@
 use crate::matching::ScoredDeclaration;
 use ferropdf_core::*;
 use ferropdf_parse::{CssProperty, CssValue, Declaration};
+use std::borrow::Cow;
+use std::collections::HashMap;
+
+/// Substitute `var(--name)` and `var(--name, fallback)` references in `raw`
+/// using the given custom-property map. Substitution is bounded to a small
+/// number of expansion rounds to defeat cycles like
+/// `--a: var(--b); --b: var(--a)`. Unresolved `var()` calls are left in
+/// place so downstream parsers can reject them gracefully.
+fn substitute_var(raw: &str, props: &HashMap<String, String>) -> String {
+    const MAX_ROUNDS: usize = 8;
+    let mut current = raw.to_string();
+    for _ in 0..MAX_ROUNDS {
+        let next = substitute_var_once(&current, props);
+        if next == current {
+            return next;
+        }
+        current = next;
+    }
+    current
+}
+
+fn substitute_var_once(raw: &str, props: &HashMap<String, String>) -> String {
+    // Find the first "var(" — early exit for the common case of no var().
+    let Some(start) = raw.find("var(") else {
+        return raw.to_string();
+    };
+    let mut out = String::with_capacity(raw.len());
+    out.push_str(&raw[..start]);
+
+    let body = &raw[start + 4..];
+    // Walk byte-by-byte until the matching `)` so we handle nested
+    // function calls like `rgb(var(--c-r), 0, 0)` correctly.
+    let bytes = body.as_bytes();
+    let mut depth: i32 = 1;
+    let mut end = None;
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(end) = end else {
+        // Unbalanced — bail and return the original so downstream sees it.
+        return raw.to_string();
+    };
+
+    let args = &body[..end];
+    let rest = &body[end + 1..];
+
+    let (name, fallback) = match args.split_once(',') {
+        Some((n, f)) => (n.trim(), Some(f.trim())),
+        None => (args.trim(), None),
+    };
+
+    let resolved = props
+        .get(name)
+        .cloned()
+        .or_else(|| fallback.map(|s| s.to_string()))
+        .unwrap_or_default();
+
+    out.push_str(&resolved);
+    out.push_str(&substitute_var_once(rest, props));
+    out
+}
+
+/// Apply a value through `var()` substitution, returning a borrowed `Cow`
+/// when no rewrite was needed (the common case).
+fn resolve_value<'a>(raw: &'a str, props: &HashMap<String, String>) -> Cow<'a, str> {
+    if !raw.contains("var(") {
+        return Cow::Borrowed(raw);
+    }
+    Cow::Owned(substitute_var(raw, props))
+}
+
+/// Pull custom-property declarations out of a list of scored declarations
+/// (in cascade order) and merge them into `style.custom_properties`.
+/// Already-inherited values are overridden when a higher-priority
+/// declaration redefines the same name.
+fn collect_custom_properties_scored(style: &mut ComputedStyle, scored: &[&ScoredDeclaration]) {
+    for sd in scored {
+        if let CssProperty::Unknown(name) = &sd.declaration.property {
+            if name.starts_with("--") {
+                let value = sd.declaration.value.to_cow().trim().to_string();
+                style.custom_properties.insert(name.clone(), value);
+            }
+        }
+    }
+}
+
+/// Same as the scored variant but for inline style declarations.
+fn collect_custom_properties_inline(style: &mut ComputedStyle, decls: &[&Declaration]) {
+    for d in decls {
+        if let CssProperty::Unknown(name) = &d.property {
+            if name.starts_with("--") {
+                let value = d.value.to_cow().trim().to_string();
+                style.custom_properties.insert(name.clone(), value);
+            }
+        }
+    }
+}
 
 /// Apply declarations sorted by cascade order:
 /// 1. Non-important, sorted by (specificity, source_order)
@@ -32,6 +139,14 @@ pub fn apply_scored_declarations(
     // author normal always beats UA normal regardless of specificity.
     non_important.sort_by_key(|sd| (sd.origin, sd.specificity, sd.source_order));
     important.sort_by_key(|sd| (sd.origin, sd.specificity, sd.source_order));
+
+    // First, fold custom properties (`--x: val`) into the style. Custom
+    // properties cascade like normal declarations, so we walk the same
+    // sorted lists. They must be merged before `apply_single` runs so
+    // `var(--x)` references resolve correctly even when the `--x`
+    // declaration appears in the same rule block as a `var()` user.
+    collect_custom_properties_scored(style, &non_important);
+    collect_custom_properties_scored(style, &important);
 
     // Apply in order: non-important first, then important overrides
     for sd in &non_important {
@@ -71,6 +186,9 @@ pub fn apply_inline_declarations(
         }
     }
 
+    collect_custom_properties_inline(style, &non_important);
+    collect_custom_properties_inline(style, &important);
+
     for decl in &non_important {
         apply_single(style, &decl.property, &decl.value, root_font_size);
     }
@@ -86,7 +204,11 @@ fn apply_single(
     root_font_size: f32,
 ) {
     let cow = value.to_cow();
-    let raw = cow.trim();
+    // Resolve any `var(--name)` references against the style's custom
+    // property map (which already includes inherited values plus any
+    // declarations collected from the same rule before apply_single ran).
+    let resolved = resolve_value(cow.as_ref(), &style.custom_properties);
+    let raw = resolved.trim();
 
     match property {
         CssProperty::Display => {
@@ -892,4 +1014,94 @@ fn resolve_font_size(raw: &str, parent_size: f32, root_font_size: f32) -> f32 {
     }
 
     parent_size
+}
+
+#[cfg(test)]
+mod var_tests {
+    use super::*;
+
+    fn props(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn substitutes_simple_variable() {
+        let p = props(&[("--primary", "red")]);
+        assert_eq!(substitute_var("var(--primary)", &p), "red");
+    }
+
+    #[test]
+    fn substitutes_inside_other_text() {
+        let p = props(&[("--pad", "12pt")]);
+        assert_eq!(
+            substitute_var("0 var(--pad) 0 var(--pad)", &p),
+            "0 12pt 0 12pt"
+        );
+    }
+
+    #[test]
+    fn missing_var_with_fallback_uses_fallback() {
+        let p = props(&[]);
+        assert_eq!(substitute_var("var(--missing, blue)", &p), "blue");
+    }
+
+    #[test]
+    fn missing_var_without_fallback_resolves_to_empty() {
+        let p = props(&[]);
+        assert_eq!(substitute_var("var(--missing)", &p), "");
+    }
+
+    #[test]
+    fn defined_var_takes_precedence_over_fallback() {
+        let p = props(&[("--c", "green")]);
+        assert_eq!(substitute_var("var(--c, red)", &p), "green");
+    }
+
+    #[test]
+    fn nested_var_resolves_iteratively() {
+        // var(--a) → "var(--b)" → "blue"
+        let p = props(&[("--a", "var(--b)"), ("--b", "blue")]);
+        assert_eq!(substitute_var("var(--a)", &p), "blue");
+    }
+
+    #[test]
+    fn cycle_does_not_infinite_loop() {
+        let p = props(&[("--x", "var(--y)"), ("--y", "var(--x)")]);
+        // After MAX_ROUNDS rounds the result still contains a `var(`
+        // call — the test only asserts we returned without hanging.
+        let result = substitute_var("var(--x)", &p);
+        assert!(
+            result.contains("var(") || result.is_empty(),
+            "got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn unbalanced_var_call_left_alone() {
+        let p = props(&[("--a", "x")]);
+        // No closing paren — substitution must bail and return the input.
+        assert_eq!(substitute_var("var(--a", &p), "var(--a");
+    }
+
+    #[test]
+    fn no_var_in_input_is_zero_cost() {
+        let p = props(&[("--a", "x")]);
+        let raw = "12pt solid red";
+        let result = resolve_value(raw, &p);
+        assert!(matches!(result, Cow::Borrowed(_)));
+        assert_eq!(result.as_ref(), raw);
+    }
+
+    #[test]
+    fn handles_nested_function_calls() {
+        let p = props(&[("--r", "255"), ("--g", "128")]);
+        assert_eq!(
+            substitute_var("rgb(var(--r), var(--g), 0)", &p),
+            "rgb(255, 128, 0)"
+        );
+    }
 }

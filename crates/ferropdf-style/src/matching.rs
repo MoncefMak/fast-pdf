@@ -103,14 +103,20 @@ impl NonTSPseudoClass for FerroNonTSPseudoClass {
     }
 }
 
-// ─── Pseudo-element stub ─────────────────────────────────────────────────────
+// ─── Pseudo-element ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FerroPseudoElement {}
+pub enum FerroPseudoElement {
+    Before,
+    After,
+}
 
 impl ToCss for FerroPseudoElement {
-    fn to_css<W: fmt::Write>(&self, _dest: &mut W) -> fmt::Result {
-        match *self {}
+    fn to_css<W: fmt::Write>(&self, dest: &mut W) -> fmt::Result {
+        match self {
+            FerroPseudoElement::Before => dest.write_str("::before"),
+            FerroPseudoElement::After => dest.write_str("::after"),
+        }
     }
 }
 
@@ -156,15 +162,21 @@ impl<'i> selectors::Parser<'i> for FerroSelectorParser {
 
     fn parse_pseudo_element(
         &self,
-        _location: SourceLocation,
+        location: SourceLocation,
         name: CowRcStr<'i>,
     ) -> Result<FerroPseudoElement, ParseError<'i, Self::Error>> {
-        Err(cssparser::ParseError {
-            kind: cssparser::ParseErrorKind::Custom(
-                SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
-            ),
-            location: _location,
-        })
+        if name.eq_ignore_ascii_case("before") {
+            Ok(FerroPseudoElement::Before)
+        } else if name.eq_ignore_ascii_case("after") {
+            Ok(FerroPseudoElement::After)
+        } else {
+            Err(cssparser::ParseError {
+                kind: cssparser::ParseErrorKind::Custom(
+                    SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
+                ),
+                location,
+            })
+        }
     }
 
     fn parse_functional_pseudo_element<'t>(

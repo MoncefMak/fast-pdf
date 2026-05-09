@@ -233,26 +233,24 @@ pub fn write_pdf(
                 DrawOp::SetOpacity(alpha) => {
                     register_alpha(*alpha, &mut opacity_states, &mut next_ref, &mut gs_counter);
                 }
-                DrawOp::DrawBoxShadow { shadow, .. } => {
+                DrawOp::DrawBoxShadow { shadow, .. } if shadow.color.a < 1.0 - f32::EPSILON => {
                     // Register alpha for shadow color
-                    if shadow.color.a < 1.0 - f32::EPSILON {
-                        if shadow.blur_radius < 0.5 {
-                            register_alpha(
-                                shadow.color.a,
-                                &mut opacity_states,
-                                &mut next_ref,
-                                &mut gs_counter,
-                            );
-                        } else {
-                            let steps = ((shadow.blur_radius / 2.0) as usize).clamp(3, 8);
-                            let step_alpha = shadow.color.a / steps as f32;
-                            register_alpha(
-                                step_alpha,
-                                &mut opacity_states,
-                                &mut next_ref,
-                                &mut gs_counter,
-                            );
-                        }
+                    if shadow.blur_radius < 0.5 {
+                        register_alpha(
+                            shadow.color.a,
+                            &mut opacity_states,
+                            &mut next_ref,
+                            &mut gs_counter,
+                        );
+                    } else {
+                        let steps = ((shadow.blur_radius / 2.0) as usize).clamp(3, 8);
+                        let step_alpha = shadow.color.a / steps as f32;
+                        register_alpha(
+                            step_alpha,
+                            &mut opacity_states,
+                            &mut next_ref,
+                            &mut gs_counter,
+                        );
                     }
                 }
                 _ => {}
@@ -357,14 +355,13 @@ pub fn write_pdf(
 
         for op in &display_list.ops {
             match op {
-                DrawOp::FillRect { rect, color, .. } => {
-                    if !color.is_transparent() {
-                        content.set_fill_rgb(color.r, color.g, color.b);
-                        let pr = to_pdf_rect(rect.x, rect.y, rect.width, rect.height, page_h);
-                        content.rect(pr.x, pr.y, pr.width, pr.height);
-                        content.fill_nonzero();
-                    }
+                DrawOp::FillRect { rect, color, .. } if !color.is_transparent() => {
+                    content.set_fill_rgb(color.r, color.g, color.b);
+                    let pr = to_pdf_rect(rect.x, rect.y, rect.width, rect.height, page_h);
+                    content.rect(pr.x, pr.y, pr.width, pr.height);
+                    content.fill_nonzero();
                 }
+                DrawOp::FillRect { .. } => {}
                 DrawOp::StrokeRect {
                     rect, color, width, ..
                 } => {

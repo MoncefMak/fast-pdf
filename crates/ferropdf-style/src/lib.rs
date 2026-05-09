@@ -2,6 +2,7 @@ mod cascade;
 mod compute;
 mod inherit;
 pub mod matching;
+pub mod pseudo_elements;
 
 use ferropdf_core::{ComputedStyle, Document, NodeId, NodeType};
 use ferropdf_parse::Stylesheet;

@@ -87,6 +87,14 @@ impl Document {
         self.nodes[parent].children.push(child);
     }
 
+    /// Insert `child` as the first child of `parent`. Used to materialise
+    /// the `::before` pseudo-element as a real text node ahead of the
+    /// element's existing children.
+    pub fn prepend_child(&mut self, parent: NodeId, child: NodeId) {
+        self.nodes[child].parent = Some(parent);
+        self.nodes[parent].children.insert(0, child);
+    }
+
     pub fn get(&self, id: NodeId) -> &Node {
         &self.nodes[id]
     }

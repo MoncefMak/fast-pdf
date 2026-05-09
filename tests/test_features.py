@@ -400,3 +400,62 @@ class TestAtPage:
         small_pages = len(pypdf.PdfReader(io.BytesIO(small_margin)).pages)
         large_pages = len(pypdf.PdfReader(io.BytesIO(large_margin)).pages)
         assert large_pages > small_pages
+
+
+# ---------------------------------------------------------------------------
+# ::before / ::after pseudo-elements — newly added in v0.3
+# ---------------------------------------------------------------------------
+
+
+class TestPseudoElements:
+    def test_before_inserts_text(self):
+        html = """<html><head><style>
+.note::before { content: "Note: "; }
+</style></head><body><p class="note">Hello world</p></body></html>"""
+        pdf = render(html)
+        text = extract_text(pdf)
+        assert "Note: Hello world" in text, text
+
+    def test_after_inserts_text(self):
+        html = """<html><head><style>
+p::after { content: " [end]"; }
+</style></head><body><p>Body</p></body></html>"""
+        pdf = render(html)
+        text = extract_text(pdf)
+        assert "Body [end]" in text, text
+
+    def test_before_and_after_combined(self):
+        html = """<html><head><style>
+.x::before { content: "[ "; }
+.x::after { content: " ]"; }
+</style></head><body><p class="x">core</p></body></html>"""
+        pdf = render(html)
+        text = extract_text(pdf)
+        assert "[ core ]" in text, text
+
+    def test_legacy_single_colon_form_works(self):
+        # CSS 2.1 syntax — still seen in the wild.
+        html = """<html><head><style>
+h1:before { content: "§ "; }
+</style></head><body><h1>Title</h1></body></html>"""
+        pdf = render(html)
+        text = extract_text(pdf)
+        assert "§ Title" in text or "§ Title" in text, text
+
+    def test_no_match_no_injection(self):
+        # Selector matches nothing: no synthetic text appears.
+        html = """<html><head><style>
+.absent::before { content: "GHOST"; }
+</style></head><body><p>visible</p></body></html>"""
+        pdf = render(html)
+        text = extract_text(pdf)
+        assert "GHOST" not in text
+        assert "visible" in text
+
+    def test_content_none_yields_no_injection(self):
+        html = """<html><head><style>
+p::before { content: none; }
+</style></head><body><p>only-this</p></body></html>"""
+        pdf = render(html)
+        text = extract_text(pdf)
+        assert text.strip() == "only-this"

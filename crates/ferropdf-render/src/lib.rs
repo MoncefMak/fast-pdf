@@ -54,8 +54,9 @@ pub fn render_with_warnings(
         )));
     }
 
-    // 1. Parse HTML
-    let parse_result = ferropdf_parse::parse(html)?;
+    // 1. Parse HTML — keep `parse_result` mutable so we can synthesise
+    // `::before`/`::after` text nodes into the document later.
+    let mut parse_result = ferropdf_parse::parse(html)?;
 
     // 2. Parse stylesheets (UA + inline + external)
     let ua_css = ferropdf_parse::css::UA_CSS;
@@ -127,6 +128,21 @@ pub fn render_with_warnings(
     }
     if let Some(m) = last_page_margin {
         page_config.margins = PageMargins::from_css_str(&m);
+    }
+
+    // 4b. Materialise `::before` / `::after` content as real text
+    // nodes before the cascade runs. Failures are silent — a malformed
+    // selector or non-literal `content` simply means no injection.
+    {
+        let ua_sheet = ferropdf_parse::parse_stylesheet(ua_css)?;
+        let mut all_sheets: Vec<&ferropdf_parse::Stylesheet> =
+            Vec::with_capacity(1 + stylesheets.len());
+        all_sheets.push(&ua_sheet);
+        all_sheets.extend(stylesheets.iter());
+        ferropdf_style::pseudo_elements::inject_pseudo_content(
+            &mut parse_result.document,
+            &all_sheets,
+        );
     }
 
     // 5. Resolve styles (all values resolved to pt)

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778339750772,
+  "lastUpdate": 1778345492595,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -1735,6 +1735,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 3986032,
             "range": "± 26168",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "maktimoncef@gmail.com",
+            "name": "moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "maktimoncef@gmail.com",
+            "name": "moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "b74cd78367ffb8d7a0ef9677d4a29e867e44d464",
+          "message": "test(golden): drop arabic fixture — too font-dependent across platforms\n\nCI run #53 macOS failed on test_golden_fingerprint[arabic] because\nArabic shaping diverges between Geeza Pro (macOS) and the Linux/CI\ndefault Arabic font: different glyph clusters, different ToUnicode\nCMap entries, different operator counts, identical-looking text\nextracted differently. The fingerprint was unstable for reasons that\ndon't reflect a real regression.\n\nArabic rendering is already covered end-to-end by\ntests/test_features.py::TestArabicAndRtl (3 tests checking that the\nPDF is valid, that mixed RTL+Latin doesn't crash, and that the dir\nattribute is case-insensitive). Those tests don't compare bytes —\nthey exercise the path and assert PDF validity, which is the right\ncontract for a feature that depends on host fonts.\n\nThe remaining golden fixtures (simple, styled, multipage) all use\nLatin text and stay stable across the CI matrix.",
+          "timestamp": "2026-05-09T17:48:51+01:00",
+          "tree_id": "0f0d50a710b6133d853389b8e52b7c028c27c0d1",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/b74cd78367ffb8d7a0ef9677d4a29e867e44d464"
+        },
+        "date": 1778345491669,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 6547863,
+            "range": "± 55673",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 7435127,
+            "range": "± 53038",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 3188201,
+            "range": "± 17957",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 3997730,
+            "range": "± 14850",
             "unit": "ns/iter"
           }
         ]

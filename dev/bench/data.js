@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777616161654,
+  "lastUpdate": 1778339012028,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -1639,6 +1639,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 3999114,
             "range": "± 18414",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "maktimoncef@gmail.com",
+            "name": "moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "maktimoncef@gmail.com",
+            "name": "moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "3a8716f686816275ced476ab2d247d36aabc338a",
+          "message": "feat(css): ::before / ::after with literal content\n\nMaterialises CSS pseudo-element content as real text nodes in the DOM\nbefore the cascade runs. Previously rules like\n`.note::before { content: \"Note: \" }` were rejected at the selector\nparse step (parse_pseudo_element returned Err), which dropped the\nentire rule before its declarations could even be considered.\n\nNew crate-internal module ferropdf-style::pseudo_elements does the\nheavy lifting:\n- Detects `::before` / `::after` (and the legacy `:before` / `:after`\n  forms) at the end of selector strings.\n- Re-parses the prefix (e.g. `.note`) as a regular SelectorList.\n- For every element matching the prefix, finds the rule's\n  `content:` declaration. Strings (`\"Note: \"`), bare keywords, and\n  the explicit `none` / `normal` (no-op) are recognised; attr() /\n  counter() / url() are out of scope and silently skipped.\n- Creates a synthetic Text node and prepends (::before) or appends\n  (::after) it to the matched element's children.\n\nWiring:\n- ferropdf-core::Document gains prepend_child for ::before injection.\n- ferropdf-render::render_with_warnings calls\n  inject_pseudo_content() after stylesheet collection but before the\n  cascade so the synthetic text inherits the parent style and gets\n  shaped, laid out, and painted just like author-written text.\n- Selectors crate parser now accepts FerroPseudoElement::{Before,After}\n  instead of returning Err. Match-time semantics are unchanged\n  because no rule matches against virtual elements directly — we use\n  the prefix selector against real elements.\n\nAlso fixes two clippy collapsible_if errors raised by clippy 1.93 in\ncrates/ferropdf-render/src/pdf.rs (FillRect transparent-color check\nand DrawBoxShadow alpha check are now match guards).\n\nTests:\n- 6 unit tests in pseudo_elements.rs::tests cover modern/legacy\n  forms, case-insensitive matching, descendant selectors as\n  prefixes, and rejection of standalone `::before`.\n- 6 end-to-end tests in tests/test_features.py::TestPseudoElements\n  assert the synthesised text reaches PDF text extraction:\n  ::before/::after literals, the legacy single-colon form,\n  combined ::before+::after, no-match selectors, and\n  `content: none` (skip).",
+          "timestamp": "2026-05-09T16:00:14+01:00",
+          "tree_id": "fd169b87d38adc9b3903dc54b52a5b70a3d1e096",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/3a8716f686816275ced476ab2d247d36aabc338a"
+        },
+        "date": 1778339011148,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 6553143,
+            "range": "± 23513",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 7393716,
+            "range": "± 55707",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 3157985,
+            "range": "± 42418",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 3988468,
+            "range": "± 18126",
             "unit": "ns/iter"
           }
         ]

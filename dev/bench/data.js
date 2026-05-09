@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778339012028,
+  "lastUpdate": 1778339750772,
   "repoUrl": "https://github.com/MoncefMak/ferropdf",
   "entries": {
     "FastPDF Criterion Benchmarks": [
@@ -1687,6 +1687,54 @@ window.BENCHMARK_DATA = {
             "name": "render_invoice_cached",
             "value": 3988468,
             "range": "± 18126",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "maktimoncef@gmail.com",
+            "name": "moncef",
+            "username": "MoncefMak"
+          },
+          "committer": {
+            "email": "maktimoncef@gmail.com",
+            "name": "moncef",
+            "username": "MoncefMak"
+          },
+          "distinct": true,
+          "id": "3e052ebbe2150ead801da1e42948bd8fa57ca598",
+          "message": "fix(ci, sandbox): cross-platform path rejection + missing pypdf dep\n\nTwo distinct CI failures from run #25604174938:\n\n1. Linux/macOS Python tests: ModuleNotFoundError: No module named\n   'pypdf'. Tests in test_features.py and test_golden.py import pypdf\n   to inspect rendered PDFs but the CI install step only listed\n   `maturin pytest pytest-cov`. Added pypdf to the install line.\n\n2. Windows Rust test failure on\n   sandbox::tests::rejects_absolute_path_with_base_url: Path::new(\n   \"/etc/passwd\").is_absolute() returns false on Windows (the platform\n   treats it as drive-relative), so the sandbox happily joined it onto\n   base_dir, the file didn't exist, and we returned NotFound instead\n   of Escapes — making the test trip but more importantly leaving a\n   real cross-platform sandbox gap. resolve_local_path now also rejects\n   any src that starts with `/` or `\\\\`, plus drive-relative forms\n   (`C:foo`) where Path::is_absolute() is false but Path::join silently\n   ignores the base. Three new Rust tests cover Windows-style absolute,\n   drive-relative, and backslash-rooted paths so the gap can't reopen.\n\nAlso: tests/test_features.py::test_arabic_text_renders previously\nasserted `b\"/CIDFontType\" in pdf`, which only holds when an Arabic\nfont is installed on the system. CI runners often lack one and the\nengine falls back gracefully — the validity check (PDF starts with\n%PDF-) is what the test actually needs to guard. Dropped the CIDFont\nassertion; kept the validity smoke test plus the dir attribute and\nmixed-direction tests.",
+          "timestamp": "2026-05-09T16:13:09+01:00",
+          "tree_id": "957f2ed1e4f3b25330810792bbe3149e476f5caf",
+          "url": "https://github.com/MoncefMak/ferropdf/commit/3e052ebbe2150ead801da1e42948bd8fa57ca598"
+        },
+        "date": 1778339749896,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "render_simple",
+            "value": 6491786,
+            "range": "± 614426",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice",
+            "value": 7344149,
+            "range": "± 158010",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_simple_cached",
+            "value": 3157164,
+            "range": "± 139993",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "render_invoice_cached",
+            "value": 3986032,
+            "range": "± 26168",
             "unit": "ns/iter"
           }
         ]

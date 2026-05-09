@@ -76,9 +76,21 @@ pub fn resolve_local_path(src: &str, base_url: Option<&str>) -> Result<PathBuf, 
     let base_canonical = std::fs::canonicalize(base_dir)
         .map_err(|e| ResolveError::BadBaseUrl(format!("{}: {}", base_dir.display(), e)))?;
 
-    // Reject absolute src — `Path::join(absolute)` silently replaces the base
-    // and would defeat the sandbox. Callers must use paths relative to base_url.
-    if std::path::Path::new(src).is_absolute() {
+    // Reject anything that looks rooted — `Path::join(absolute)` silently
+    // replaces the base, and `is_absolute()` is platform-dependent
+    // (`/etc/passwd` is absolute on Linux but not on Windows, where it's
+    // treated as drive-relative). The sandbox must behave identically
+    // across platforms regardless of how `Path` chooses to interpret the
+    // string, so we test the raw bytes too.
+    if std::path::Path::new(src).is_absolute() || src.starts_with('/') || src.starts_with('\\') {
+        return Err(ResolveError::Escapes);
+    }
+    // Drive-relative on Windows (`C:foo`, no separator) — also refused
+    // because joining it onto base_dir yields `<base>\C:foo` which
+    // canonicalises to something inside the sandbox by luck rather than
+    // design. The matching bytes are an ASCII letter followed by `:`.
+    let bytes = src.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
         return Err(ResolveError::Escapes);
     }
 
@@ -157,11 +169,44 @@ mod tests {
 
     #[test]
     fn rejects_absolute_path_with_base_url() {
+        // `/etc/passwd` is `is_absolute()` on Unix but not on Windows
+        // (Windows treats it as drive-relative). The sandbox must refuse
+        // both — the explicit `starts_with('/')` check covers Windows.
         let dir = tmpdir();
         write_file(dir.path(), "logo.png", b"fake");
         let err =
             resolve_local_path("/etc/passwd", Some(dir.path().to_str().unwrap())).unwrap_err();
-        assert!(matches!(err, ResolveError::Escapes));
+        assert!(matches!(err, ResolveError::Escapes), "got {:?}", err);
+    }
+
+    #[test]
+    fn rejects_windows_style_absolute_path() {
+        let dir = tmpdir();
+        let err = resolve_local_path(
+            "C:\\Windows\\System32\\drivers\\etc\\hosts",
+            Some(dir.path().to_str().unwrap()),
+        )
+        .unwrap_err();
+        assert!(matches!(err, ResolveError::Escapes), "got {:?}", err);
+    }
+
+    #[test]
+    fn rejects_drive_relative_path() {
+        // `C:foo` is drive-relative on Windows — `Path::is_absolute()`
+        // returns false but it must still be refused or the join would
+        // produce a path that escapes the sandbox by accident.
+        let dir = tmpdir();
+        let err =
+            resolve_local_path("C:secret.txt", Some(dir.path().to_str().unwrap())).unwrap_err();
+        assert!(matches!(err, ResolveError::Escapes), "got {:?}", err);
+    }
+
+    #[test]
+    fn rejects_backslash_rooted_path() {
+        let dir = tmpdir();
+        let err =
+            resolve_local_path("\\Windows\\hosts", Some(dir.path().to_str().unwrap())).unwrap_err();
+        assert!(matches!(err, ResolveError::Escapes), "got {:?}", err);
     }
 
     #[test]
